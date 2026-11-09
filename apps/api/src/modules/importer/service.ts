@@ -360,8 +360,8 @@ export async function importSpreadsheets(customDataDir?: string): Promise<Import
       );
     }
 
-    // 4. Clean up legacy pre-004 rows where linha_planilha IS NULL (one-time transition to exact row-by-row sync)
-    await tx.query("DELETE FROM plano_acao WHERE linha_planilha IS NULL AND origem_planilha != 'MANUAL'");
+    // 4. Clean up legacy pre-004 rows where linha_planilha IS NULL or *_2H suffix
+    await tx.query("DELETE FROM plano_acao WHERE (linha_planilha IS NULL AND origem_planilha != 'MANUAL') OR origem_planilha IN ('FINANCEIRO_2H', 'SUPORTE_2H')");
 
     const existingPlansRes = await tx.query<{
       id: number;
@@ -391,7 +391,7 @@ export async function importSpreadsheets(customDataDir?: string): Promise<Import
         if (!t || t === "planos de ação") continue;
         exeMap.set(t, {
           prog: Number(re.D) || 1,
-          real: Number(re.E) || 0,
+          real: Number(re.E) ?? 0,
           statusExe: cleanCell(re.G)
         });
       }
@@ -498,9 +498,9 @@ export async function importSpreadsheets(customDataDir?: string): Promise<Import
 
       // 4B. Import/Update every row of 2H (34 Financeiro + 168 Suporte = 202 rows)
       for (const r2 of rows2H) {
-        if (r2._r <= 5) continue;
+        if (r2._r <= 4) continue;
         const pTitle = cleanCell(r2.C);
-        if (!pTitle || pTitle === "Plano de Ação") {
+        if (!pTitle || pTitle.toLowerCase() === "plano de ação") {
           report.planosRejeitados++;
           continue;
         }
@@ -509,7 +509,7 @@ export async function importSpreadsheets(customDataDir?: string): Promise<Import
         const naoResolvido = rawHowMuch.toUpperCase().includes("NÃO RESOLVIDO");
         const numVal = Number(rawHowMuch);
         const howMuchCentavos = !Number.isNaN(numVal) && numVal > 0 ? Math.round(numVal * 100) : 0;
-        const fimPlanejado = excelSerialToISO(r2.F) || "2026-02-15";
+        const fimPlanejado = excelSerialToISO(r2.F) || "2026-01-20";
         const statusRaw = cleanCell(r2.G) || "Não Realizado";
         const status = normalizeStatus(statusRaw);
         const areaName = cleanCell(r2.H).toUpperCase() || (origem === "FINANCEIRO" ? "FINANCEIRO" : "SUPORTE");
@@ -530,7 +530,7 @@ export async function importSpreadsheets(customDataDir?: string): Promise<Import
           ? "Urgente"
           : "Normal";
 
-        const rowKey = `${origem}_2H::2H::${r2._r}`;
+        const rowKey = `${origem}::2H::${r2._r}`;
         const existingId = rowLookup.get(rowKey);
 
         if (existingId) {
@@ -538,9 +538,9 @@ export async function importSpreadsheets(customDataDir?: string): Promise<Import
             `UPDATE plano_acao
              SET plano = $1, prioridade = $2, what = $3, who_id = $4, area_id = $5,
                  onde = $6, fim_planejado = $7, how = $8, how_much_centavos = $9,
-                 status = $10, status_original = $11, nao_resolvido = $12, etapa_teste = $13,
-                 tarefas_programadas = 1, tarefas_realizadas = $14
-             WHERE id = $15`,
+                 status = $10, status_original = $11, origem_planilha = $12, nao_resolvido = $13, etapa_teste = $14,
+                 tarefas_programadas = 1, tarefas_realizadas = $15
+             WHERE id = $16`,
             [
               pTitle,
               prioridade,
@@ -553,6 +553,7 @@ export async function importSpreadsheets(customDataDir?: string): Promise<Import
               howMuchCentavos,
               status,
               statusRaw,
+              origem,
               naoResolvido,
               etapaTeste,
               status === "Concluído" ? 1 : 0,
@@ -581,7 +582,7 @@ export async function importSpreadsheets(customDataDir?: string): Promise<Import
               howMuchCentavos,
               status,
               statusRaw,
-              `${origem}_2H`,
+              origem,
               r2._r,
               "Execução & Testes (Aba 2H)",
               naoResolvido,
@@ -590,6 +591,43 @@ export async function importSpreadsheets(customDataDir?: string): Promise<Import
             ]
           );
           report.planosImportados++;
+        }
+      }
+
+      // 4C. Import/Update every row of EXE (41 Financeiro + 28 Suporte = 69 exact rows)
+      for (const re of rowsEXE) {
+        if (re._r <= 4) continue;
+        const pTitle = cleanCell(re.C);
+        if (!pTitle || pTitle.toLowerCase() === "planos de ação") continue;
+        const prog = Number(re.D) || 1;
+        const real = re.E !== undefined && re.E !== null && String(re.E).trim() !== "" ? Number(re.E) : 0;
+        const statusRaw = cleanCell(re.G) || (real >= prog ? "Concluído" : real > 0 ? "Em andamento" : "Atrasado");
+        const status = normalizeStatus(statusRaw);
+        const whoId = personMap.get(origem === "FINANCEIRO" ? "KARINE SANTOS" : "VINICIUS CASAGRANDE") || null;
+        const areaId = areaMap.get(origem === "FINANCEIRO" ? "FINANCEIRO" : "SUPORTE") || null;
+
+        const rowKey = `${origem}::EXE::${re._r}`;
+        const existingId = rowLookup.get(rowKey);
+
+        if (existingId) {
+          await tx.query(
+            `UPDATE plano_acao
+             SET plano = $1, what = $2, who_id = $3, area_id = $4,
+                 status = $5, status_original = $6, origem_planilha = $7,
+                 tarefas_programadas = $8, tarefas_realizadas = $9
+             WHERE id = $10`,
+            [pTitle, pTitle, whoId, areaId, status, statusRaw, origem, prog, real, existingId]
+          );
+        } else {
+          await tx.query(
+            `INSERT INTO plano_acao (
+               plano, prioridade, what, why, who_id, area_id, onde,
+               inicio, prazo_dias, fim_planejado, how, how_much_centavos,
+               status, status_original, origem_planilha, aba_origem, linha_planilha,
+               categoria, nao_resolvido, etapa_teste, tarefas_programadas, tarefas_realizadas
+             ) VALUES ($1,'Normal',$2,'Acompanhamento de Execução (Aba EXE)',$3,$4,'DISK','2026-01-15',30,'2026-03-13','',0,$5,$6,$7,'EXE',$8,'Acompanhamento EXE',false,'ESTRATEGICO',$9,$10)`,
+            [pTitle, pTitle, whoId, areaId, status, statusRaw, origem, re._r, prog, real]
+          );
         }
       }
     };
@@ -930,7 +968,7 @@ export async function syncPlanoAcaoToExcel(planoId: number): Promise<{ syncedFil
       if (item.aba_origem === "2H") {
         // Exact row in 2H
         const row1 = item.linha_planilha;
-        if (row1 && row1 > 5) {
+        if (row1 && row1 >= 5) {
           updatesBySheet["2H"].push(
             { cellRef: `C${row1}`, value: item.plano },
             { cellRef: `D${row1}`, value: item.how || item.etapa_teste },
@@ -940,9 +978,24 @@ export async function syncPlanoAcaoToExcel(planoId: number): Promise<{ syncedFil
             updatesBySheet["2H"].push({ cellRef: `E${row1}`, value: "NÃO RESOLVIDO" });
           } else {
             const cents = Number(item.how_much_centavos || 0);
-            updatesBySheet["2H"].push({ cellRef: `E${row1}`, value: cents / 100 });
+            updatesBySheet["2H"].push({ cellRef: `E${row1}`, value: cents > 0 ? cents / 100 : "" });
           }
           if (item.area_nome) updatesBySheet["2H"].push({ cellRef: `H${row1}`, value: item.area_nome });
+        }
+      } else if (item.aba_origem === "EXE") {
+        // Exact row in EXE
+        const row1 = item.linha_planilha;
+        if (row1 && row1 >= 5) {
+          const prog = Number((item as any).tarefas_programadas || 1);
+          const real = Number((item as any).tarefas_realizadas ?? 0);
+          const pct = prog > 0 ? real / prog : 0;
+          updatesBySheet.EXE.push(
+            { cellRef: `C${row1}`, value: item.plano },
+            { cellRef: `D${row1}`, value: prog },
+            { cellRef: `E${row1}`, value: real },
+            { cellRef: `F${row1}`, value: pct, keepFormula: true },
+            { cellRef: `G${row1}`, value: item.status, keepFormula: true }
+          );
         }
       } else {
         // Exact row in 5W + matching row in EXE

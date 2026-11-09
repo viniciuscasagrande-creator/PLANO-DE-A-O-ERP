@@ -228,7 +228,7 @@ export async function buildServer() {
       ORDER BY p.aba_origem ASC, p.linha_planilha ASC, p.id ASC
     `, params5w);
 
-    const planos = planosRes.rows;
+    const planos = planosRes.rows.filter(p => p.aba_origem === "5W" || p.aba_origem === "2H");
     const itens5W = planos.filter(p => p.aba_origem === "5W");
     const itens2H = planos.filter(p => p.aba_origem === "2H");
 
@@ -701,22 +701,28 @@ export async function buildServer() {
       const observacao = body.observacao_resolucao ?? prev.observacao_resolucao;
       const naoResolvido = body.nao_resolvido !== undefined ? Boolean(body.nao_resolvido) : prev.nao_resolvido;
       const fimReal = status === "Concluído" ? new Date().toISOString().slice(0, 10) : prev.fim_real;
+      const tarefasProg = body.tarefas_programadas !== undefined
+        ? Number(body.tarefas_programadas)
+        : Number(prev.tarefas_programadas || 1);
       const tarefasReal = body.tarefas_realizadas !== undefined
         ? Number(body.tarefas_realizadas)
         : status === "Concluído"
-        ? Number(prev.tarefas_programadas || 1)
+        ? tarefasProg
         : prev.tarefas_realizadas;
+      const statusOriginal = body.status_original ?? (prev.aba_origem === "2H" ? (status === "Concluído" ? "Realizado" : "Não Realizado") : status);
 
       const afterRes = await db.query(
         `UPDATE plano_acao
          SET plano = $1, prioridade = $2, what = $3, why = $4, who_id = $5, area_id = $6,
              onde = $7, how = $8, fim_planejado = $9, status = $10, observacao_resolucao = $11,
-             nao_resolvido = $12, fim_real = $13, etapa_teste = $14, tarefas_realizadas = $15
-         WHERE id = $16 RETURNING *`,
+             nao_resolvido = $12, fim_real = $13, etapa_teste = $14, tarefas_realizadas = $15,
+             tarefas_programadas = $16, status_original = $17
+         WHERE id = $18 RETURNING *`,
         [
           plano, prioridade, what, why, whoId, areaId,
           onde, how, fimPlanejado, status, observacao,
-          naoResolvido, fimReal, etapaTeste, tarefasReal, id
+          naoResolvido, fimReal, etapaTeste, tarefasReal,
+          tarefasProg, statusOriginal, id
         ]
       );
 

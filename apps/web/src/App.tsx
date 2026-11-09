@@ -595,7 +595,7 @@ export default function App() {
       if (filtro5wOrigem !== "ALL" && !String(p.origem_planilha).startsWith(filtro5wOrigem)) return false;
       if (filtro5wAba === "5W" && p.aba_origem !== "5W") return false;
       if (filtro5wAba === "2H" && p.aba_origem !== "2H") return false;
-      if (filtro5wAba === "EXE" && p.aba_origem !== "5W") return false;
+      if (filtro5wAba === "EXE" && p.aba_origem !== "EXE") return false;
       if (filtro5wStatus !== "ALL" && p.status !== filtro5wStatus) return false;
       if (apenasNaoResolvidos && !p.nao_resolvido) return false;
       if (busca5w) {
@@ -2343,7 +2343,7 @@ export default function App() {
                     cursor: "pointer"
                   }}
                 >
-                  5 W ({planos.filter(p => (p.aba_origem || "5W") === "5W" && (filtro5wOrigem === "ALL" || p.origem_planilha === filtro5wOrigem)).length})
+                  5 W ({planos.filter(p => p.aba_origem === "5W" && (filtro5wOrigem === "ALL" || String(p.origem_planilha).startsWith(filtro5wOrigem))).length})
                 </button>
                 <button
                   onClick={() => setFiltro5wAba("2H")}
@@ -2359,7 +2359,7 @@ export default function App() {
                     cursor: "pointer"
                   }}
                 >
-                  2 H ({planos.filter(p => p.aba_origem === "2H" && (filtro5wOrigem === "ALL" || p.origem_planilha === filtro5wOrigem)).length})
+                  2 H ({planos.filter(p => p.aba_origem === "2H" && (filtro5wOrigem === "ALL" || String(p.origem_planilha).startsWith(filtro5wOrigem))).length})
                 </button>
                 <button
                   onClick={() => setFiltro5wAba("EXE")}
@@ -2375,7 +2375,7 @@ export default function App() {
                     cursor: "pointer"
                   }}
                 >
-                  EXE — Execução
+                  ACOMPANHAMENTO DE EXECUÇÃO — EXE ({planos.filter(p => p.aba_origem === "EXE" && (filtro5wOrigem === "ALL" || String(p.origem_planilha).startsWith(filtro5wOrigem))).length})
                 </button>
               </div>
 
@@ -2771,146 +2771,331 @@ export default function App() {
           )}
 
           {/* =================================================================
-              TABELA ABA 2H — ESTRUTURA FIEL À ABA 2H DAS PLANILHAS (HOW / HOW MUCH / STATUS)
+              TABELA ABA 2H — IDÊNTICA À ABA 2H DA PLANILHA (CABEÇALHO DUPLO: PLANO DE AÇÃO | HOW | HOW MUCH | DATA MÁXIMA | STATUS)
              ================================================================= */}
           {(filtro5wAba === "2H" || filtro5wAba === "ALL") && (
             <div className="panel-no-pad" style={{ overflowX: "auto" }}>
-              <table className="fin-table">
+              <table className="fin-table" style={{ minWidth: 1050, borderCollapse: "collapse" }}>
                 <thead>
+                  {/* Linha 1 do Cabeçalho Agrupado da Aba 2H */}
                   <tr style={{ background: "#334155" }}>
-                    <th style={{ width: 80, textAlign: "center" }}>Linha</th>
-                    <th>Plano de Ação / Tarefa Técnica (Coluna C)</th>
-                    <th>How — Como será feito / Etapa QA (Coluna D)</th>
-                    <th>How Much / Trava (Coluna E)</th>
-                    <th>Status (Coluna G — ERP ⇄ Planilha)</th>
+                    <th rowSpan={2} style={{ borderRight: "1px solid #475569", width: 70, textAlign: "center", color: "#e2e8f0" }}>
+                      Linha
+                    </th>
+                    <th rowSpan={2} style={{ borderRight: "1px solid #475569", minWidth: 340, color: "#ffffff", fontSize: 12.5 }}>
+                      Plano de Ação
+                    </th>
+                    <th style={{ borderRight: "1px solid #475569", borderBottom: "1px solid #475569", color: "#e2e8f0", minWidth: 240 }}>
+                      How
+                    </th>
+                    <th style={{ borderRight: "1px solid #475569", borderBottom: "1px solid #475569", color: "#e2e8f0", width: 170, textAlign: "center" }}>
+                      How much
+                    </th>
+                    <th rowSpan={2} style={{ borderRight: "1px solid #475569", width: 170, textAlign: "center", color: "#ffffff", fontSize: 12 }}>
+                      Data máxima para conclusão
+                    </th>
+                    <th rowSpan={2} style={{ width: 155, textAlign: "center", color: "#ffffff", fontSize: 12.5 }}>
+                      Status
+                    </th>
+                  </tr>
+                  {/* Linha 2 do Cabeçalho Agrupado da Aba 2H */}
+                  <tr style={{ background: "#475569" }}>
+                    <th style={{ borderRight: "1px solid #64748b", color: "#f8fafc", fontSize: 11.5 }}>
+                      Como será feito
+                    </th>
+                    <th style={{ borderRight: "1px solid #64748b", color: "#f8fafc", fontSize: 11.5, textAlign: "center" }}>
+                      Quanto custa
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {planosFiltrados.map(p => (
-                    <tr key={p.id}>
-                      <td style={{ textAlign: "center", fontSize: 11.5, color: "#94a3b8" }}>
-                        <div style={{ fontWeight: 700, color: "#cbd5e1" }}>#{p.linha_planilha}</div>
-                        <div style={{ fontSize: 10 }}>{p.origem_planilha} • {p.aba_origem}</div>
-                      </td>
-                      <td style={{ fontWeight: 600 }}>{p.plano}</td>
-                      <td>
-                        <select
-                          className="select-dark"
-                          style={{ padding: "4px 8px", fontSize: 12 }}
-                          value={p.how || p.etapa_teste || "TESTAR DISK"}
-                          onChange={async e => {
-                            const novoHow = e.target.value;
-                            await fetch(`/api/plano-acao/${p.id}`, {
-                              method: "PUT",
-                              headers: apiHeaders(),
-                              body: JSON.stringify({
-                                how: novoHow,
-                                etapa_teste: novoHow === "TESTE OK" ? "TESTE OK" : novoHow === "TESTAR DISK" ? "TESTAR DISK" : "GUILHERME",
-                                status: novoHow === "TESTE OK" ? "Concluído" : p.status
-                              })
-                            });
-                            showNotification(`Coluna How (Linha ${p.linha_planilha}) → ${novoHow}!`);
-                            fetchAll(dashOrigemFilter);
-                          }}
-                        >
-                          <option value="TESTE OK">TESTE OK</option>
-                          <option value="TESTAR DISK">TESTAR DISK</option>
-                          <option value="Guilherme">Guilherme</option>
-                          {p.how && !["TESTE OK", "TESTAR DISK", "Guilherme"].includes(p.how) && (
-                            <option value={p.how}>{p.how}</option>
+                  {planosFiltrados.map(p => {
+                    const formatBrDate = (iso: string | null) => {
+                      if (!iso) return "";
+                      const parts = String(iso).slice(0, 10).split("-");
+                      return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : iso;
+                    };
+                    const isRealizado = p.status === "Concluído";
+
+                    return (
+                      <tr key={p.id} style={{ borderBottom: "1px solid #1e382d" }}>
+                        {/* Linha da Planilha */}
+                        <td style={{ textAlign: "center", fontSize: 11.5, color: "#94a3b8", borderRight: "1px solid #162a21" }}>
+                          <div style={{ fontWeight: 700, color: "#cbd5e1" }}>#{p.linha_planilha}</div>
+                          <div style={{ fontSize: 10 }}>{p.origem_planilha === "FINANCEIRO" ? "FIN" : "SUP"}</div>
+                        </td>
+
+                        {/* Coluna C: Plano de Ação */}
+                        <td style={{ fontWeight: 600, color: "#f8fafc", borderRight: "1px solid #162a21" }}>
+                          {p.plano}
+                        </td>
+
+                        {/* Coluna D: How (Como será feito) — editável */}
+                        <td style={{ borderRight: "1px solid #162a21", padding: "4px 8px" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <input
+                              className="input-dark"
+                              style={{
+                                flex: 1,
+                                background: "rgba(0,0,0,0.2)",
+                                border: "1px solid #1e382d",
+                                padding: "5px 8px",
+                                fontSize: 12,
+                                color:
+                                  p.etapa_teste === "TESTE OK"
+                                    ? "#34d399"
+                                    : p.etapa_teste === "TESTAR DISK"
+                                    ? "#fbbf24"
+                                    : "#f8fafc",
+                                fontWeight: p.etapa_teste === "TESTAR DISK" || p.etapa_teste === "TESTE OK" ? 700 : 500
+                              }}
+                              defaultValue={p.how || ""}
+                              onBlur={async e => {
+                                const val = e.target.value;
+                                if (val !== (p.how || "")) {
+                                  await fetch(`/api/plano-acao/${p.id}`, {
+                                    method: "PUT",
+                                    headers: apiHeaders(),
+                                    body: JSON.stringify({
+                                      how: val,
+                                      etapa_teste:
+                                        val.toUpperCase().includes("TESTE OK")
+                                          ? "TESTE OK"
+                                          : val.toUpperCase().includes("TESTAR DISK")
+                                          ? "TESTAR DISK"
+                                          : val.toUpperCase().includes("GUILHERME") || val.toUpperCase().includes("GULHERME")
+                                          ? "GUILHERME"
+                                          : "ESTRATEGICO"
+                                    })
+                                  });
+                                  showNotification(`Coluna How (Linha #${p.linha_planilha}) atualizada no ERP e Excel!`);
+                                  fetchAll(dashOrigemFilter);
+                                }
+                              }}
+                            />
+                          </div>
+                        </td>
+
+                        {/* Coluna E: How much (Quanto custa / NÃO RESOLVIDO) */}
+                        <td style={{ borderRight: "1px solid #162a21", textAlign: "center", padding: "4px 8px" }}>
+                          {p.nao_resolvido ? (
+                            <span
+                              className="tag tag-red"
+                              style={{ cursor: "pointer", fontWeight: 800, padding: "4px 10px" }}
+                              title="Clique para remover NÃO RESOLVIDO no ERP e na Planilha"
+                              onClick={async () => {
+                                await fetch(`/api/plano-acao/${p.id}`, {
+                                  method: "PUT",
+                                  headers: apiHeaders(),
+                                  body: JSON.stringify({ nao_resolvido: false })
+                                });
+                                showNotification(`Linha #${p.linha_planilha}: NÃO RESOLVIDO removido!`);
+                                fetchAll(dashOrigemFilter);
+                              }}
+                            >
+                              NÃO RESOLVIDO
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                await fetch(`/api/plano-acao/${p.id}`, {
+                                  method: "PUT",
+                                  headers: apiHeaders(),
+                                  body: JSON.stringify({ nao_resolvido: true })
+                                });
+                                showNotification(`Linha #${p.linha_planilha} marcada como NÃO RESOLVIDO!`);
+                                fetchAll(dashOrigemFilter);
+                              }}
+                              style={{
+                                background: "transparent",
+                                border: "1px dashed #334155",
+                                color: "#64748b",
+                                borderRadius: 4,
+                                padding: "3px 8px",
+                                fontSize: 11,
+                                cursor: "pointer"
+                              }}
+                              title="Clique caso queira marcar NÃO RESOLVIDO nesta linha"
+                            >
+                              {p.how_much_centavos > 0 ? formatBRL(p.how_much_centavos) : "—"}
+                            </button>
                           )}
-                        </select>
-                      </td>
-                      <td>
-                        {p.nao_resolvido ? (
-                          <span
-                            className="tag tag-red"
-                            style={{ cursor: "pointer" }}
-                            onClick={async () => {
-                              await fetch(`/api/plano-acao/${p.id}`, {
+                        </td>
+
+                        {/* Coluna F: Data máxima para conclusão */}
+                        <td style={{ borderRight: "1px solid #162a21", textAlign: "center", fontSize: 12.5, whiteSpace: "nowrap" }}>
+                          {formatBrDate(p.fim_planejado)}
+                        </td>
+
+                        {/* Coluna G: Status (Realizado / Não Realizado idêntico à planilha) */}
+                        <td style={{ padding: 4, textAlign: "center" }}>
+                          <select
+                            value={isRealizado ? "Concluído" : "Não iniciado"}
+                            style={{
+                              background: isRealizado ? "#16a34a" : "#dc2626",
+                              color: "#ffffff",
+                              fontWeight: 700,
+                              fontSize: 12,
+                              border: "none",
+                              borderRadius: 4,
+                              padding: "6px 10px",
+                              width: "100%",
+                              cursor: "pointer",
+                              textAlign: "center"
+                            }}
+                            onChange={async e => {
+                              const novoStatus = e.target.value;
+                              const res = await fetch(`/api/plano-acao/${p.id}`, {
                                 method: "PUT",
                                 headers: apiHeaders(),
-                                body: JSON.stringify({ nao_resolvido: false })
+                                body: JSON.stringify({
+                                  status: novoStatus,
+                                  status_original: novoStatus === "Concluído" ? "Realizado" : "Não Realizado"
+                                })
                               });
-                              showNotification(`Linha #${p.linha_planilha} destravada!`);
+                              const data = await res.json();
+                              const synced = data.excelSync?.syncedFiles?.length
+                                ? ` (${data.excelSync.syncedFiles[0]} linha ${p.linha_planilha})`
+                                : "";
+                              showNotification(
+                                `Linha #${p.linha_planilha} → ${novoStatus === "Concluído" ? "Realizado" : "Não Realizado"}${synced}!`
+                              );
                               fetchAll(dashOrigemFilter);
                             }}
                           >
-                            NÃO RESOLVIDO ✕
-                          </span>
-                        ) : (
-                          <span>{formatBRL(p.how_much_centavos || 0)}</span>
-                        )}
-                      </td>
-                      <td>
-                        <select
-                          className="select-dark"
-                          style={{ padding: "4px 8px", fontSize: 12 }}
-                          value={p.status}
-                          onChange={async e => {
-                            const novoStatus = e.target.value;
-                            await fetch(`/api/plano-acao/${p.id}`, {
-                              method: "PUT",
-                              headers: apiHeaders(),
-                              body: JSON.stringify({ status: novoStatus })
-                            });
-                            showNotification(`Linha #${p.linha_planilha} → ${novoStatus}!`);
-                            fetchAll(dashOrigemFilter);
-                          }}
-                        >
-                          <option value="Concluído">Realizado / Concluído</option>
-                          <option value="Não iniciado">Não Realizado</option>
-                          <option value="Em andamento">Em andamento</option>
-                          <option value="Atrasado">Atrasado</option>
-                        </select>
-                      </td>
-                    </tr>
-                  ))}
+                            <option value="Concluído">Realizado</option>
+                            <option value="Não iniciado">Não Realizado</option>
+                          </select>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           )}
 
           {/* =================================================================
-              TABELA ABA EXE — ACOMPANHAMENTO DE EXECUÇÃO (TAREFAS PROGRAMADAS X REALIZADAS)
+              TABELA ABA EXE — ACOMPANHAMENTO DE EXECUÇÃO (IDÊNTICA À ABA EXE DA PLANILHA)
              ================================================================= */}
           {filtro5wAba === "EXE" && (
-            <div className="panel-no-pad">
-              <table className="fin-table">
+            <div className="panel-no-pad" style={{ overflowX: "auto" }}>
+              <table className="fin-table" style={{ minWidth: 980, borderCollapse: "collapse" }}>
                 <thead>
                   <tr style={{ background: "#334155" }}>
-                    <th style={{ width: 80, textAlign: "center" }}>Linha</th>
-                    <th>Planos de Ação (Coluna C da Aba EXE)</th>
-                    <th style={{ textAlign: "center" }}>Tarefas Programadas (Coluna D)</th>
-                    <th style={{ textAlign: "center" }}>Tarefas Realizadas (Coluna E)</th>
-                    <th>Tarefas Concluídas (%) (Coluna F)</th>
-                    <th>Status (Coluna G)</th>
+                    <th style={{ borderRight: "1px solid #475569", width: 70, textAlign: "center", color: "#e2e8f0" }}>
+                      Linha
+                    </th>
+                    <th style={{ borderRight: "1px solid #475569", minWidth: 360, color: "#ffffff", fontSize: 12.5 }}>
+                      Planos de Ação
+                    </th>
+                    <th style={{ borderRight: "1px solid #475569", width: 170, textAlign: "center", color: "#ffffff", fontSize: 12 }}>
+                      Quantidade de Tarefas Programadas
+                    </th>
+                    <th style={{ borderRight: "1px solid #475569", width: 170, textAlign: "center", color: "#ffffff", fontSize: 12 }}>
+                      Quantidade de Tarefas Realizadas
+                    </th>
+                    <th style={{ borderRight: "1px solid #475569", width: 180, textAlign: "center", color: "#ffffff", fontSize: 12 }}>
+                      % de Conclusão do Plano de Ação
+                    </th>
+                    <th style={{ width: 150, textAlign: "center", color: "#ffffff", fontSize: 12.5 }}>
+                      Status
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {planosFiltrados.map(p => {
                     const prog = Number(p.tarefas_programadas || 1);
-                    const real = Number(p.tarefas_realizadas || 0);
-                    const pct = prog > 0 ? Math.round((real / prog) * 100) : 0;
+                    const real = Number(p.tarefas_realizadas ?? 0);
+                    const pctNum = prog > 0 ? (real / prog) * 100 : 0;
+                    const pctFormatted = `${pctNum.toFixed(2).replace(".", ",")}%`;
+                    const statusLabel = p.status_original || p.status;
+                    const statusBg =
+                      p.status === "Concluído"
+                        ? "#16a34a"
+                        : p.status === "Atrasado"
+                        ? "#dc2626"
+                        : "#ea580c";
+
                     return (
-                      <tr key={p.id}>
-                        <td style={{ textAlign: "center", fontSize: 12, color: "#94a3b8" }}>
-                          #{p.linha_planilha} ({p.origem_planilha === "FINANCEIRO" ? "FIN" : "SUP"})
+                      <tr key={p.id} style={{ borderBottom: "1px solid #1e382d" }}>
+                        <td style={{ textAlign: "center", fontSize: 11.5, color: "#94a3b8", borderRight: "1px solid #162a21" }}>
+                          <div style={{ fontWeight: 700, color: "#cbd5e1" }}>#{p.linha_planilha}</div>
+                          <div style={{ fontSize: 10 }}>{p.origem_planilha === "FINANCEIRO" ? "FIN" : "SUP"}</div>
                         </td>
-                        <td style={{ fontWeight: 700 }}>{p.plano}</td>
-                        <td style={{ textAlign: "center", fontWeight: 700 }}>{prog}</td>
-                        <td style={{ textAlign: "center", fontWeight: 700, color: "#34d399" }}>{real}</td>
-                        <td style={{ minWidth: 180 }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <div className="progress-bar-dark" style={{ flex: 1, height: 8, margin: 0 }}>
-                              <div className="progress-fill-dark" style={{ width: `${pct}%` }} />
-                            </div>
-                            <span style={{ fontSize: 12, fontWeight: 700 }}>{pct}%</span>
-                          </div>
+                        <td style={{ fontWeight: 600, color: "#f8fafc", borderRight: "1px solid #162a21" }}>
+                          {p.plano}
                         </td>
-                        <td>
-                          <span className={`tag ${p.status === "Concluído" ? "tag-emerald" : p.status === "Atrasado" ? "tag-red" : "tag-amber"}`}>
-                            {p.status}
+                        <td style={{ textAlign: "center", borderRight: "1px solid #162a21", padding: 4 }}>
+                          <input
+                            type="number"
+                            min={0}
+                            className="input-dark"
+                            style={{ width: 72, textAlign: "center", fontWeight: 700, padding: "4px 6px" }}
+                            defaultValue={prog}
+                            onBlur={async e => {
+                              const newProg = Math.max(1, Number(e.target.value) || 1);
+                              if (newProg !== prog) {
+                                const newStatus = real >= newProg ? "Concluído" : real > 0 ? "Em andamento" : "Atrasado";
+                                await fetch(`/api/plano-acao/${p.id}`, {
+                                  method: "PUT",
+                                  headers: apiHeaders(),
+                                  body: JSON.stringify({
+                                    tarefas_programadas: newProg,
+                                    status: newStatus,
+                                    status_original: newStatus
+                                  })
+                                });
+                                showNotification(`Linha #${p.linha_planilha} EXE: Tarefas Programadas → ${newProg}!`);
+                                fetchAll(dashOrigemFilter);
+                              }
+                            }}
+                          />
+                        </td>
+                        <td style={{ textAlign: "center", borderRight: "1px solid #162a21", padding: 4 }}>
+                          <input
+                            type="number"
+                            min={0}
+                            className="input-dark"
+                            style={{ width: 72, textAlign: "center", fontWeight: 700, color: "#34d399", padding: "4px 6px" }}
+                            defaultValue={real}
+                            onBlur={async e => {
+                              const newReal = Math.max(0, Number(e.target.value) || 0);
+                              if (newReal !== real) {
+                                const newStatus = newReal >= prog ? "Concluído" : newReal > 0 ? "Em andamento" : "Atrasado";
+                                await fetch(`/api/plano-acao/${p.id}`, {
+                                  method: "PUT",
+                                  headers: apiHeaders(),
+                                  body: JSON.stringify({
+                                    tarefas_realizadas: newReal,
+                                    status: newStatus,
+                                    status_original: newStatus
+                                  })
+                                });
+                                showNotification(`Linha #${p.linha_planilha} EXE: Tarefas Realizadas → ${newReal}!`);
+                                fetchAll(dashOrigemFilter);
+                              }
+                            }}
+                          />
+                        </td>
+                        <td style={{ textAlign: "center", fontWeight: 700, borderRight: "1px solid #162a21", fontSize: 12.5 }}>
+                          {pctFormatted}
+                        </td>
+                        <td style={{ padding: 4, textAlign: "center" }}>
+                          <span
+                            style={{
+                              display: "inline-block",
+                              width: "100%",
+                              background: statusBg,
+                              color: "#ffffff",
+                              fontWeight: 700,
+                              fontSize: 12,
+                              borderRadius: 4,
+                              padding: "6px 8px"
+                            }}
+                          >
+                            {statusLabel}
                           </span>
                         </td>
                       </tr>
