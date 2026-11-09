@@ -720,7 +720,7 @@ export async function buildServer() {
       return {
         id: pr.id,
         nome: pr.nome,
-        documento: "***.***.***-** (LGPD)",
+        documento: "***.***.***-**",
         banco: "Restrito ao Financeiro",
         agencia: "****",
         conta: "****",

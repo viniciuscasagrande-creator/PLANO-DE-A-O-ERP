@@ -564,7 +564,7 @@ export default function App() {
             className={`module-btn ${activeModule === "cadastros" ? "active" : ""}`}
             onClick={() => setActiveModule("cadastros")}
           >
-            <Users size={15} /> Cadastros & LGPD
+            <Users size={15} /> Cadastros
           </button>
           <button
             className={`module-btn ${activeModule === "auditoria" ? "active" : ""}`}
@@ -639,7 +639,7 @@ export default function App() {
                 Painel Executivo & Diagnóstico Operacional — Disk Ingressos
               </h1>
               <p className="page-subtitle" style={{ marginBottom: 0 }}>
-                Consolidação das Planilhas 5W2H (Financeiro e Suporte), Homologação de Ajustes da Plataforma (Guilherme) e Razão Contábil (Fase 2).
+                Consolidação das Planilhas 5W2H (Financeiro e Suporte) e Homologação de Ajustes da Plataforma (Guilherme).
               </p>
             </div>
 
@@ -768,60 +768,6 @@ export default function App() {
                   Decidir
                 </button>
               </div>
-            </div>
-
-            {/* CARD 5 */}
-            <div className="status-card">
-              <div className="status-card-top">
-                <span className="status-card-title">Caixa & Recebíveis Gateway</span>
-                <div className="status-card-icon" style={{ background: "rgba(16,185,129,0.16)", color: "#34d399" }}>
-                  <Landmark size={17} />
-                </div>
-              </div>
-              {dashboard.financeiroResumo ? (
-                <>
-                  <div className="status-card-value" style={{ fontSize: 21, color: "#34d399" }}>
-                    {formatBRL(
-                      dashboard.financeiroResumo.saldo_banco_centavos +
-                        dashboard.financeiroResumo.recebiveis_gateway_centavos
-                    )}
-                  </div>
-                  <div className="status-card-meta">
-                    <span>Banco: {formatBRL(dashboard.financeiroResumo.saldo_banco_centavos)}</span>
-                    <span>Gateway: {formatBRL(dashboard.financeiroResumo.recebiveis_gateway_centavos)}</span>
-                  </div>
-                </>
-              ) : (
-                <div className="status-card-meta" style={{ marginTop: 12, color: "#fbbf24" }}>
-                  <Lock size={14} /> Restrito ao Financeiro/Diretoria
-                </div>
-              )}
-            </div>
-
-            {/* CARD 6 */}
-            <div className="status-card">
-              <div className="status-card-top">
-                <span className="status-card-title">A Repassar & Receita Disk</span>
-                <div className="status-card-icon" style={{ background: "rgba(168,85,247,0.18)", color: "#c084fc" }}>
-                  <TrendingUp size={17} />
-                </div>
-              </div>
-              {dashboard.financeiroResumo ? (
-                <>
-                  <div className="status-card-value" style={{ fontSize: 21, color: "#fbbf24" }}>
-                    {formatBRL(dashboard.financeiroResumo.a_repassar_produtores_centavos)}
-                  </div>
-                  <div className="status-card-meta">
-                    <span className="tag tag-emerald">
-                      Comissão Disk: {formatBRL(dashboard.financeiroResumo.receita_comissao_centavos)}
-                    </span>
-                  </div>
-                </>
-              ) : (
-                <div className="status-card-meta" style={{ marginTop: 12, color: "#fbbf24" }}>
-                  <Lock size={14} /> Oculto por LGPD/RBAC
-                </div>
-              )}
             </div>
           </div>
 
@@ -1148,123 +1094,89 @@ export default function App() {
           </div>
 
           {/* =================================================================
-              ROW 4: GRÁFICO DE COMPOSIÇÃO FINANCEIRA & RAZÃO CONTÁBIL (ESQUERDA)
-                     + DADOS EXPLICATIVOS DA FASE 2 & PERGUNTAS ABERTAS (DIREITA)
+              ROW 4: GRÁFICO DE PERGUNTAS ABERTAS E REGRAS DA ABA 2H (ESQUERDA)
+                     + DADOS EXPLICATIVOS DAS DECISÕES PENDENTES NAS PLANILHAS (DIREITA)
              ================================================================= */}
           <div className="chart-explainer-row">
             <div className="chart-card">
               <div>
                 <div className="panel-title" style={{ marginBottom: 2, display: "flex", alignItems: "center", gap: 8 }}>
-                  <Landmark size={17} color="#10b981" />
-                  4. Estrutura Financeira (Fase 2) — Fluxo de Venda, Taxas e Balancete
+                  <HelpCircle size={17} color="#10b981" />
+                  4. Mapeamento das Dúvidas e Regras da Aba 2H ({perguntas.length} itens nas planilhas)
                 </div>
                 <div style={{ fontSize: 12, color: "#94a3b8" }}>
-                  Modelo de dupla entrada em centavos para cada R$ 1.000,00 vendidos (Comissão 20% / Gateway 2,99%)
+                  Itens levantados na aba 2H da Planilha Financeiro que dependem de definição entre Financeiro (Karine), Diretoria e Guilherme
                 </div>
               </div>
 
-              {/* Visual Breakdown Bar of a Ticket Sale */}
-              <div style={{ background: "#091410", padding: 14, borderRadius: 8, border: "1px solid #162a21" }}>
-                <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8, color: "#ecfdf5" }}>
-                  Anatomia Contábil de uma Venda de Ingresso (Exemplo: R$ 1.000,00 no Crédito à vista):
-                </div>
-                <div className="stacked-bar-track" style={{ height: 22, marginBottom: 10 }}>
-                  <div
-                    className="stacked-segment"
-                    style={{ width: "80%", background: "#f59e0b", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "#000" }}
-                  >
-                    80% Repasse Produtor (R$ 800,00)
-                  </div>
-                  <div
-                    className="stacked-segment"
-                    style={{ width: "17.01%", background: "#10b981", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10.5, fontWeight: 700, color: "#000" }}
-                  >
-                    17,01% Líquido Disk
-                  </div>
-                  <div
-                    className="stacked-segment"
-                    style={{ width: "2.99%", background: "#ef4444" }}
-                    title="Taxa Gateway: 2,99% (R$ 29,90)"
-                  />
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11.5, color: "#94a3b8", flexWrap: "wrap", gap: 8 }}>
-                  <span>• <strong>D 1.1.02 Recebíveis Gateway:</strong> R$ 970,10</span>
-                  <span>• <strong>D 4.1.01 Taxa Gateway (2,99%):</strong> R$ 29,90</span>
-                  <span>• <strong>C 3.1.01 Comissão Disk (20%):</strong> R$ 200,00</span>
-                  <span>• <strong>C 2.1.01 Repasse Produtor (80%):</strong> R$ 800,00</span>
-                </div>
-              </div>
-
-              {/* Current Trial Balance Bars */}
-              <div style={{ borderTop: "1px solid #162a21", paddingTop: 10 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: "#94a3b8", marginBottom: 8 }}>
-                  Saldos Atuais das Contas Analíticas no PostgreSQL 16:
-                </div>
-                {balancete.contas.map(c => (
-                  <div
-                    key={c.id}
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      padding: "6px 10px",
-                      borderBottom: "1px solid #13261e",
-                      fontSize: 12.5
-                    }}
-                  >
-                    <span>
-                      <strong>{c.codigo}</strong> {c.nome}
-                    </span>
-                    <span>
-                      <span style={{ color: "#94a3b8", marginRight: 12 }}>
-                        D: {formatBRL(c.debitos_centavos)} | C: {formatBRL(c.creditos_centavos)}
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {perguntas.map(q => {
+                  const isDecided = q.status === "Decidido";
+                  return (
+                    <div
+                      key={q.id}
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        padding: "9px 12px",
+                        borderRadius: 7,
+                        background: "#091410",
+                        border: "1px solid #162a21",
+                        gap: 12
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontSize: 12.5, fontWeight: 700, color: "#ecfdf5" }}>
+                          <span style={{ color: "#34d399", marginRight: 6 }}>{q.codigo}</span>
+                          {q.topico}
+                        </div>
+                        <div style={{ fontSize: 11.5, color: "#94a3b8" }}>{q.pergunta}</div>
+                      </div>
+                      <span className={`tag ${isDecided ? "tag-emerald" : "tag-amber"}`} style={{ flexShrink: 0 }}>
+                        {q.status}
                       </span>
-                      <strong style={{ color: c.saldo_centavos >= 0 ? "#34d399" : "#f87171" }}>
-                        Saldo: {formatBRL(c.saldo_centavos)}
-                      </strong>
-                    </span>
-                  </div>
-                ))}
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
             {/* EXPLICATIVO AO LADO DO GRÁFICO 4 */}
             <div className="explainer-card">
               <span className="explainer-badge">
-                <ShieldCheck size={13} /> Dados Explicativos — Regras Inegociáveis do Financeiro
+                <HelpCircle size={13} /> Dados Explicativos — Aba 2H das Planilhas
               </span>
               <div className="explainer-title">
-                Por que o núcleo financeiro foi construído com Dupla Entrada e Centavos?
+                Por que esses itens da aba 2H aparecem como pendentes nas planilhas?
               </div>
               <ul className="explainer-list">
                 <li>
-                  <strong>Zero Erro de Arredondamento (Inteiros em Centavos & Basis Points):</strong> Todo valor monetário no banco (`partidas`, `vendas`, `repasses`) é salvo como `bigint` em centavos (`R$ 1.000,00 = 100000`) e as taxas em <em>basis points</em> (`2,99% = 299 bps`), eliminando diferenças de centavos nos borderôs dos produtores.
-                </li>
-                <li>
-                  <strong>Razão Contábil Imutável por Trigger no Banco:</strong> As tabelas `lancamentos` e `partidas` possuem triggers PostgreSQL (`trg_balanceamento` e `bloqueia_alteracao`) que impedem qualquer `UPDATE` ou `DELETE` e garantem que nenhum lançamento exista se a soma dos débitos for diferente da soma dos créditos.
+                  <strong>Divisão de Taxa (80/20) e Descontos (Linha 19 da aba 2H):</strong> A planilha registra a dúvida sobre como dividir a taxa quando há descontos concedidos ao produtor e quem absorve o custo em cada modalidade.
                 </li>
                 <li className="warn">
-                  <strong>Parâmetros Configuráveis para as Dúvidas da Aba 2H:</strong> Enquanto o Financeiro valida as 7 perguntas abertas (como quem absorve a taxa do gateway em cada evento e o limite de antecipação), o módulo <strong>Financeiro (Fase 2)</strong> permite parametrizar a comissão e quem paga a taxa em cada venda.
+                  <strong>Múltiplas Bandeiras (REDE / PAG) e SPREAD (Linhas 15 a 18 da aba 2H):</strong> A aba 2H aponta a necessidade de cadastrar taxas diferentes por método (Cartão, PIX, POS, Site, PDV) e calcular o spread sobre o parcelamento.
+                </li>
+                <li>
+                  <strong>Antecipação de Eventos e Liberação de Caixa (Linhas 10 e 20 da aba 2H):</strong> Define a pergunta se pode ser liberado até 100% do valor que está no caixa da Disk e como registrar o lançamento de antecipação ao produtor.
                 </li>
               </ul>
 
               <div style={{ marginTop: "auto", display: "flex", gap: 10 }}>
                 <button
                   className="btn-emerald"
-                  onClick={() => {
-                    setFinTab("pagamentos");
-                    setActiveModule("financeiro");
-                  }}
+                  onClick={() => setActiveModule("perguntas")}
                 >
-                  Simular e Registrar Venda (Fase 2) <ArrowRight size={14} />
+                  Responder Dúvidas da Aba 2H <ArrowRight size={14} />
                 </button>
                 <button
                   className="btn-secondary"
                   onClick={() => {
-                    setFinTab("balancete");
-                    setActiveModule("financeiro");
+                    setFiltro5wOrigem("FINANCEIRO");
+                    setActiveModule("plano5w2h");
                   }}
                 >
-                  Abrir Balancete Contábil
+                  Ver Aba 5W/2H Financeiro
                 </button>
               </div>
             </div>
@@ -2046,46 +1958,18 @@ export default function App() {
       )}
 
       {/* =====================================================================
-          MODULE 6: CADASTROS BASE & PROTEÇÃO LGPD (TAREFA T5)
+          MODULE 6: CADASTROS BASE (TAREFA T5 — ABAS CAD_f E CAD_a)
          ===================================================================== */}
       {activeModule === "cadastros" && (
         <main className="page-container">
-          <h1 className="page-title">Cadastros Base (Pessoas, Áreas, Produtores & Eventos)</h1>
+          <h1 className="page-title">Cadastros Base (Pessoas CAD_f & Áreas CAD_a)</h1>
           <p className="page-subtitle">
-            Regras #5 e #6 do GEMINI.md ativas: o perfil &ldquo;suporte&rdquo; e &ldquo;leitura&rdquo; não visualizam dados bancários nem repasses (LGPD).
+            Funcionários, responsáveis e departamentos importados das abas CAD_f e CAD_a das planilhas 5W2H.
           </p>
 
           <div className="panel-no-pad">
             <div style={{ padding: "14px 16px", borderBottom: "1px solid #1e382d", fontWeight: 700 }}>
-              Produtores e Dados Bancários (Visão do perfil atual: {currentUser.perfil})
-            </div>
-            <table className="fin-table">
-              <thead>
-                <tr>
-                  <th>Produtor</th>
-                  <th>Documento</th>
-                  <th>Banco</th>
-                  <th>Agência / Conta</th>
-                  <th>Chave PIX</th>
-                </tr>
-              </thead>
-              <tbody>
-                {cadastros.produtores.map((pr: any) => (
-                  <tr key={pr.id}>
-                    <td style={{ fontWeight: 700 }}>{pr.nome}</td>
-                    <td>{pr.documento}</td>
-                    <td>{pr.banco}</td>
-                    <td>{pr.agencia} / {pr.conta}</td>
-                    <td>{pr.chave_pix}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="panel-no-pad">
-            <div style={{ padding: "14px 16px", borderBottom: "1px solid #1e382d", fontWeight: 700 }}>
-              Pessoas (CAD_f) & Perfis de Acesso
+              Pessoas & Responsáveis (Aba CAD_f)
             </div>
             <table className="fin-table">
               <thead>
@@ -2094,7 +1978,7 @@ export default function App() {
                   <th>Área (CAD_a)</th>
                   <th>E-mail (Login)</th>
                   <th>Telefone</th>
-                  <th>Perfil RBAC</th>
+                  <th>Perfil de Acesso</th>
                 </tr>
               </thead>
               <tbody>
@@ -2110,6 +1994,30 @@ export default function App() {
               </tbody>
             </table>
           </div>
+
+          <div className="panel-no-pad">
+            <div style={{ padding: "14px 16px", borderBottom: "1px solid #1e382d", fontWeight: 700 }}>
+              Áreas / Departamentos (Aba CAD_a)
+            </div>
+            <table className="fin-table">
+              <thead>
+                <tr>
+                  <th style={{ width: "15%" }}>ID</th>
+                  <th>Departamento / Área</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cadastros.areas.map((ar: any) => (
+                  <tr key={ar.id}>
+                    <td style={{ color: "#94a3b8", fontWeight: 700 }}>#{ar.id}</td>
+                    <td style={{ fontWeight: 700 }}>
+                      <span className="tag tag-emerald">{ar.nome}</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </main>
       )}
 
@@ -2118,9 +2026,9 @@ export default function App() {
          ===================================================================== */}
       {activeModule === "auditoria" && (
         <main className="page-container">
-          <h1 className="page-title">Trilha de Auditoria (Compliance & LGPD)</h1>
+          <h1 className="page-title">Trilha de Auditoria (Compliance)</h1>
           <p className="page-subtitle">
-            Toda escrita relevante grava em &ldquo;auditoria&rdquo; quem, quando e o estado antes/depois (com dados bancários/senhas mascarados por LGPD).
+            Toda escrita relevante grava em &ldquo;auditoria&rdquo; quem, quando e o estado antes/depois.
           </p>
 
           <div className="panel-no-pad">
