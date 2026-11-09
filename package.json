@@ -17,7 +17,8 @@
     "dev:api": "npm run dev -w apps/api",
     "dev:web": "npm run dev -w apps/web",
     "build": "npm run build -w apps/web",
-    "start": "node apps/api/src/index.ts",
+    "start": "npx tsx apps/api/src/index.ts",
+    "backup": "powershell -ExecutionPolicy Bypass -File scripts/backup-local.ps1",
     "test": "vitest run"
   },
   "dependencies": {
