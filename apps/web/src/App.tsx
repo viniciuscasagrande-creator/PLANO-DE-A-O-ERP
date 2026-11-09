@@ -6,14 +6,18 @@ import {
   Wrench,
   Users,
   ShieldCheck,
-  RotateCcw,
-  Plus,
   CheckCircle2,
   AlertTriangle,
   Lock,
   UserCheck,
   HelpCircle,
-  LogIn
+  LogIn,
+  TrendingUp,
+  PieChart,
+  BarChart3,
+  Activity,
+  Info,
+  ArrowRight
 } from "lucide-react";
 
 type Perfil = "admin" | "financeiro" | "suporte" | "leitura";
@@ -47,11 +51,120 @@ function capitalizeNatureza(nat: string, aceitaLancamento: boolean): string {
   return nat.charAt(0).toUpperCase() + nat.slice(1);
 }
 
+// SVG Multi-Segment Donut Chart Component
+function DonutChartSVG({
+  segments,
+  centerTop,
+  centerBottom
+}: {
+  segments: { label: string; value: number; color: string }[];
+  centerTop: string;
+  centerBottom: string;
+}) {
+  const total = segments.reduce((acc, s) => acc + s.value, 0) || 1;
+  const radius = 62;
+  const circumference = 2 * Math.PI * radius;
+  let cumulativePercent = 0;
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 24, flexWrap: "wrap" }}>
+      <div style={{ position: "relative", width: 164, height: 164, flexShrink: 0 }}>
+        <svg width="164" height="164" viewBox="0 0 164 164">
+          <circle
+            cx="82"
+            cy="82"
+            r={radius}
+            fill="transparent"
+            stroke="#13261e"
+            strokeWidth="20"
+          />
+          {segments.map((seg, i) => {
+            if (seg.value <= 0) return null;
+            const pct = seg.value / total;
+            const strokeDasharray = `${pct * circumference} ${circumference}`;
+            const strokeDashoffset = -cumulativePercent * circumference;
+            cumulativePercent += pct;
+            return (
+              <circle
+                key={i}
+                cx="82"
+                cy="82"
+                r={radius}
+                fill="transparent"
+                stroke={seg.color}
+                strokeWidth="20"
+                strokeDasharray={strokeDasharray}
+                strokeDashoffset={strokeDashoffset}
+                transform="rotate(-90 82 82)"
+              />
+            );
+          })}
+        </svg>
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            textAlign: "center"
+          }}
+        >
+          <span style={{ fontSize: 24, fontWeight: 800, color: "#ecfdf5", lineHeight: 1.1 }}>
+            {centerTop}
+          </span>
+          <span style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>{centerBottom}</span>
+        </div>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, flex: 1, minWidth: 180 }}>
+        {segments.map((seg, i) => {
+          const pct = Math.round((seg.value / total) * 100);
+          return (
+            <div
+              key={i}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                fontSize: 12.5,
+                padding: "5px 10px",
+                background: "rgba(0,0,0,0.2)",
+                borderRadius: 6,
+                border: "1px solid #162a21"
+              }}
+            >
+              <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span
+                  style={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: "50%",
+                    background: seg.color,
+                    display: "inline-block"
+                  }}
+                />
+                {seg.label}
+              </span>
+              <strong>
+                {seg.value} ({pct}%)
+              </strong>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
-  // Active top-level module (defaults to 'financeiro' matching the Phase 2 video!)
+  // Starts on "dashboard" as requested by the user!
   const [activeModule, setActiveModule] = useState<
-    "financeiro" | "dashboard" | "plano5w2h" | "solicitacoes" | "perguntas" | "cadastros" | "auditoria"
-  >("financeiro");
+    "dashboard" | "financeiro" | "plano5w2h" | "solicitacoes" | "perguntas" | "cadastros" | "auditoria"
+  >("dashboard");
+
+  const [dashOrigemFilter, setDashOrigemFilter] = useState<"ALL" | "FINANCEIRO" | "SUPORTE">("ALL");
 
   // Active subtab inside 'Financeiro – razão contábil e pagamentos' (exact 4 tabs from video)
   const [finTab, setFinTab] = useState<"contas" | "lancamentos" | "balancete" | "pagamentos">("contas");
@@ -134,7 +247,7 @@ export default function App() {
     return h;
   }
 
-  async function fetchAll() {
+  async function fetchAll(origemScope = dashOrigemFilter) {
     const headers = apiHeaders();
     const [
       contasRes,
@@ -152,7 +265,7 @@ export default function App() {
       fetch("/api/financeiro/lancamentos", { headers }).then(r => r.json()),
       fetch("/api/financeiro/balancete", { headers }).then(r => r.json()),
       fetch("/api/financeiro/taxas", { headers }).then(r => r.json()),
-      fetch("/api/dashboard", { headers }).then(r => r.json()),
+      fetch(`/api/dashboard?origem=${origemScope}`, { headers }).then(r => r.json()),
       fetch("/api/plano-acao", { headers }).then(r => r.json()),
       fetch("/api/solicitacoes", { headers }).then(r => r.json()),
       fetch("/api/perguntas-abertas", { headers }).then(r => r.json()),
@@ -171,7 +284,6 @@ export default function App() {
     setCadastros(cadRes);
     setAuditoria(audRes);
 
-    // Ensure default selections for Lançamento manual match video ("4.1.02 Despesas de eventos" & "1.1.01 Banco – conta principal")
     const cDespesa = contasRes.find((c: any) => c.codigo === "4.1.02");
     const cBanco = contasRes.find((c: any) => c.codigo === "1.1.01");
     if (cDespesa) setLancDebitoId(cDespesa.id);
@@ -179,14 +291,13 @@ export default function App() {
   }
 
   useEffect(() => {
-    fetchAll();
-  }, [currentUser.perfil, token]);
+    fetchAll(dashOrigemFilter);
+  }, [currentUser.perfil, token, dashOrigemFilter]);
 
   const contasAnaliticas = useMemo(() => {
     return contas.filter(c => c.aceita_lancamento);
   }, [contas]);
 
-  // Tab 1 handler: Criar conta
   async function handleCriarConta(e: React.FormEvent) {
     e.preventDefault();
     if (!novaContaCodigo.trim() || !novaContaNome.trim()) return;
@@ -211,7 +322,6 @@ export default function App() {
     fetchAll();
   }
 
-  // Tab 2 handler: Lançamento manual
   async function handleLancamentoManual(e: React.FormEvent) {
     e.preventDefault();
     const valor_centavos = parseBRLInputToCentavos(lancValorStr);
@@ -240,7 +350,6 @@ export default function App() {
     fetchAll();
   }
 
-  // Tab 2 handler: Estornar lançamento
   async function handleEstornar(lancId: number) {
     const res = await fetch(`/api/financeiro/lancamentos/${lancId}/estornar`, {
       method: "POST",
@@ -256,7 +365,6 @@ export default function App() {
     fetchAll();
   }
 
-  // Tab 4 handler: Editar taxa por método
   async function handleChangeTaxaBps(regraId: number, rawPercentStr: string) {
     const taxa_bps = parsePercentStrToBps(rawPercentStr);
     const res = await fetch(`/api/financeiro/taxas/${regraId}`, {
@@ -273,7 +381,6 @@ export default function App() {
     }
   }
 
-  // Tab 4 handler: Calcular e Registrar venda de ingressos
   async function handleCalcularVenda() {
     const bruto_centavos = parseBRLInputToCentavos(vendaBrutoStr);
     const comissao_bps = Math.round(parseFloat(vendaComissaoPct.replace(",", ".")) * 100) || 2000;
@@ -322,7 +429,6 @@ export default function App() {
     fetchAll();
   }
 
-  // Tab 4 handler: Movimentações de caixa ("Receber do gateway" & "Repassar ao produtor")
   async function handleMovimentacaoCaixa(tipo: "receber_gateway" | "repassar_produtor") {
     const valor_centavos = parseBRLInputToCentavos(caixaValorStr);
     if (valor_centavos <= 0) {
@@ -419,22 +525,22 @@ export default function App() {
           <div className="brand-mark">DI</div>
           <div>
             <div style={{ fontWeight: 700, fontSize: 15, color: "#ecfdf5" }}>Disk Ingressos ERP</div>
-            <div style={{ fontSize: 11, color: "#94a3b8" }}>PostgreSQL 16 • Centavos & Razão Imutável</div>
+            <div style={{ fontSize: 11, color: "#94a3b8" }}>Gestão 5W2H, Razão Contábil & Compliance</div>
           </div>
         </div>
 
         <nav className="module-nav">
           <button
+            className={`module-btn ${activeModule === "dashboard" ? "active" : ""}`}
+            onClick={() => setActiveModule("dashboard")}
+          >
+            <LayoutDashboard size={15} /> Dashboard Inicial
+          </button>
+          <button
             className={`module-btn ${activeModule === "financeiro" ? "active" : ""}`}
             onClick={() => setActiveModule("financeiro")}
           >
             <Landmark size={15} /> Financeiro (Fase 2)
-          </button>
-          <button
-            className={`module-btn ${activeModule === "dashboard" ? "active" : ""}`}
-            onClick={() => setActiveModule("dashboard")}
-          >
-            <LayoutDashboard size={15} /> Dashboard (T7)
           </button>
           <button
             className={`module-btn ${activeModule === "plano5w2h" ? "active" : ""}`}
@@ -513,6 +619,718 @@ export default function App() {
       )}
 
       {/* =====================================================================
+          MODULE 0 (DEFAULT): DASHBOARD INICIAL COMPLETO COM GRÁFICOS E DADOS EXPLICATIVOS AO LADO
+         ===================================================================== */}
+      {activeModule === "dashboard" && dashboard && (
+        <main className="page-container-wide">
+          {/* Header + Scope Filter */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "flex-end",
+              justifyContent: "space-between",
+              gap: 16,
+              marginBottom: 20,
+              flexWrap: "wrap"
+            }}
+          >
+            <div>
+              <h1 className="page-title" style={{ fontSize: 24 }}>
+                Painel Executivo & Diagnóstico Operacional — Disk Ingressos
+              </h1>
+              <p className="page-subtitle" style={{ marginBottom: 0 }}>
+                Consolidação das Planilhas 5W2H (Financeiro e Suporte), Homologação de Ajustes da Plataforma (Guilherme) e Razão Contábil (Fase 2).
+              </p>
+            </div>
+
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button
+                className={dashOrigemFilter === "ALL" ? "btn-emerald" : "btn-secondary"}
+                onClick={() => setDashOrigemFilter("ALL")}
+              >
+                Consolidado (225 Itens 5W2H)
+              </button>
+              <button
+                className={dashOrigemFilter === "FINANCEIRO" ? "btn-emerald" : "btn-secondary"}
+                onClick={() => setDashOrigemFilter("FINANCEIRO")}
+              >
+                Planilha Financeiro (Karine)
+              </button>
+              <button
+                className={dashOrigemFilter === "SUPORTE" ? "btn-emerald" : "btn-secondary"}
+                onClick={() => setDashOrigemFilter("SUPORTE")}
+              >
+                Planilha Suporte & Riscos (Vinicius)
+              </button>
+            </div>
+          </div>
+
+          {/* -----------------------------------------------------------------
+              6 STATUS CARDS EXECUTIVOS
+             ----------------------------------------------------------------- */}
+          <div className="status-cards-grid">
+            {/* CARD 1 */}
+            <div className="status-card">
+              <div className="status-card-top">
+                <span className="status-card-title">Execução Geral 5W2H</span>
+                <div className="status-card-icon" style={{ background: "rgba(16,185,129,0.16)", color: "#34d399" }}>
+                  <ClipboardList size={17} />
+                </div>
+              </div>
+              <div className="status-card-value">
+                {dashboard.kpis.concluidos} / {dashboard.kpis.totalPlanos}
+              </div>
+              <div className="progress-bar-dark">
+                <div className="progress-fill-dark" style={{ width: `${dashboard.kpis.pctConcluido}%` }} />
+              </div>
+              <div className="status-card-meta">
+                <span className="tag tag-emerald">{dashboard.kpis.pctConcluido}% Concluído</span>
+                <span>{dashboard.kpis.emAndamento} em andamento</span>
+              </div>
+            </div>
+
+            {/* CARD 2 */}
+            <div className="status-card">
+              <div className="status-card-top">
+                <span className="status-card-title">Atrasados & Não Resolvidos</span>
+                <div className="status-card-icon" style={{ background: "rgba(239,68,68,0.18)", color: "#f87171" }}>
+                  <AlertTriangle size={17} />
+                </div>
+              </div>
+              <div className="status-card-value" style={{ color: "#f87171" }}>
+                {dashboard.kpis.atrasados + dashboard.kpis.naoResolvidos} alertas
+              </div>
+              <div className="progress-bar-dark">
+                <div
+                  className="progress-fill-dark"
+                  style={{
+                    width: `${Math.min(100, Math.round(((dashboard.kpis.atrasados + dashboard.kpis.naoResolvidos) / (dashboard.kpis.totalPlanos || 1)) * 100))}%`,
+                    background: "#ef4444"
+                  }}
+                />
+              </div>
+              <div className="status-card-meta">
+                <span className="tag tag-red">{dashboard.kpis.atrasados} Atrasados (5W)</span>
+                <span className="tag tag-amber">{dashboard.kpis.naoResolvidos} Não Resolvidos (2H)</span>
+              </div>
+            </div>
+
+            {/* CARD 3 */}
+            <div className="status-card">
+              <div className="status-card-top">
+                <span className="status-card-title">Ajustes Plataforma (Guilherme)</span>
+                <div className="status-card-icon" style={{ background: "rgba(59,130,246,0.18)", color: "#60a5fa" }}>
+                  <Wrench size={17} />
+                </div>
+              </div>
+              <div className="status-card-value">
+                {dashboard.kpis.reqDone} / {dashboard.kpis.reqTotal}
+              </div>
+              <div className="progress-bar-dark">
+                <div
+                  className="progress-fill-dark"
+                  style={{ width: `${dashboard.kpis.pctReq}%`, background: "#3b82f6" }}
+                />
+              </div>
+              <div className="status-card-meta">
+                <span className="tag tag-slate">{dashboard.kpis.pctReq}% Testados ☑️</span>
+                <span>{dashboard.kpis.reqPending} na fila de testes</span>
+              </div>
+            </div>
+
+            {/* CARD 4 */}
+            <div className="status-card">
+              <div className="status-card-top">
+                <span className="status-card-title">Perguntas Abertas (Financeiro)</span>
+                <div className="status-card-icon" style={{ background: "rgba(245,158,11,0.18)", color: "#fbbf24" }}>
+                  <HelpCircle size={17} />
+                </div>
+              </div>
+              <div className="status-card-value" style={{ color: "#fbbf24" }}>
+                {dashboard.kpis.perguntasPendentes} pendentes
+              </div>
+              <div className="progress-bar-dark">
+                <div
+                  className="progress-fill-dark"
+                  style={{
+                    width: `${dashboard.kpis.totalPerguntas ? Math.round((dashboard.kpis.perguntasDecididas / dashboard.kpis.totalPerguntas) * 100) : 0}%`,
+                    background: "#f59e0b"
+                  }}
+                />
+              </div>
+              <div className="status-card-meta">
+                <span>De {dashboard.kpis.totalPerguntas} dúvidas da aba 2H</span>
+                <button
+                  className="btn-secondary"
+                  style={{ padding: "2px 8px", fontSize: 11 }}
+                  onClick={() => setActiveModule("perguntas")}
+                >
+                  Decidir
+                </button>
+              </div>
+            </div>
+
+            {/* CARD 5 */}
+            <div className="status-card">
+              <div className="status-card-top">
+                <span className="status-card-title">Caixa & Recebíveis Gateway</span>
+                <div className="status-card-icon" style={{ background: "rgba(16,185,129,0.16)", color: "#34d399" }}>
+                  <Landmark size={17} />
+                </div>
+              </div>
+              {dashboard.financeiroResumo ? (
+                <>
+                  <div className="status-card-value" style={{ fontSize: 21, color: "#34d399" }}>
+                    {formatBRL(
+                      dashboard.financeiroResumo.saldo_banco_centavos +
+                        dashboard.financeiroResumo.recebiveis_gateway_centavos
+                    )}
+                  </div>
+                  <div className="status-card-meta">
+                    <span>Banco: {formatBRL(dashboard.financeiroResumo.saldo_banco_centavos)}</span>
+                    <span>Gateway: {formatBRL(dashboard.financeiroResumo.recebiveis_gateway_centavos)}</span>
+                  </div>
+                </>
+              ) : (
+                <div className="status-card-meta" style={{ marginTop: 12, color: "#fbbf24" }}>
+                  <Lock size={14} /> Restrito ao Financeiro/Diretoria
+                </div>
+              )}
+            </div>
+
+            {/* CARD 6 */}
+            <div className="status-card">
+              <div className="status-card-top">
+                <span className="status-card-title">A Repassar & Receita Disk</span>
+                <div className="status-card-icon" style={{ background: "rgba(168,85,247,0.18)", color: "#c084fc" }}>
+                  <TrendingUp size={17} />
+                </div>
+              </div>
+              {dashboard.financeiroResumo ? (
+                <>
+                  <div className="status-card-value" style={{ fontSize: 21, color: "#fbbf24" }}>
+                    {formatBRL(dashboard.financeiroResumo.a_repassar_produtores_centavos)}
+                  </div>
+                  <div className="status-card-meta">
+                    <span className="tag tag-emerald">
+                      Comissão Disk: {formatBRL(dashboard.financeiroResumo.receita_comissao_centavos)}
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <div className="status-card-meta" style={{ marginTop: 12, color: "#fbbf24" }}>
+                  <Lock size={14} /> Oculto por LGPD/RBAC
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* =================================================================
+              ROW 1: GRÁFICO DE ROSCA STATUS 5W2H + COMPARATIVO POR PLANILHA (ESQUERDA)
+                     + DADOS EXPLICATIVOS (DIREITA)
+             ================================================================= */}
+          <div className="chart-explainer-row">
+            <div className="chart-card">
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <div className="panel-title" style={{ marginBottom: 2, display: "flex", alignItems: "center", gap: 8 }}>
+                    <PieChart size={17} color="#10b981" />
+                    1. Distribuição Geral de Status do Plano de Ação 5W2H
+                  </div>
+                  <div style={{ fontSize: 12, color: "#94a3b8" }}>
+                    Proporção entre ações Concluídas, Em Andamento, Não Iniciadas (2H) e Atrasadas
+                  </div>
+                </div>
+                <span className="tag tag-emerald">{dashboard.kpis.totalPlanos} itens analisados</span>
+              </div>
+
+              <DonutChartSVG
+                centerTop={`${dashboard.kpis.pctConcluido}%`}
+                centerBottom="Concluídos"
+                segments={[
+                  { label: "Concluído / Realizado", value: dashboard.kpis.concluidos, color: "#10b981" },
+                  { label: "Em andamento", value: dashboard.kpis.emAndamento, color: "#3b82f6" },
+                  { label: "Não iniciado (Desdobramentos 2H)", value: dashboard.kpis.naoIniciados, color: "#f59e0b" },
+                  { label: "Atrasado (Crítico)", value: dashboard.kpis.atrasados, color: "#ef4444" }
+                ]}
+              />
+
+              <div style={{ borderTop: "1px solid #162a21", paddingTop: 12 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "#cbd5e1", marginBottom: 10 }}>
+                  Comparativo Direto entre as Planilhas Originais (5W + 2H):
+                </div>
+                {(dashboard.porOrigem || []).map((orig: any) => {
+                  const pct = orig.total ? Math.round((orig.concluido / orig.total) * 100) : 0;
+                  const pctAnd = orig.total ? Math.round((orig.andamento / orig.total) * 100) : 0;
+                  const pctNao = orig.total ? Math.round((orig.naoIniciado / orig.total) * 100) : 0;
+                  const pctAtr = orig.total ? Math.round((orig.atrasado / orig.total) * 100) : 0;
+                  return (
+                    <div key={orig.origem} className="stacked-bar-row">
+                      <div className="stacked-bar-header">
+                        <strong>{orig.origem}</strong>
+                        <span style={{ color: "#94a3b8" }}>
+                          {orig.concluido}/{orig.total} concluídos ({pct}%) •{" "}
+                          <span style={{ color: "#f87171", fontWeight: 600 }}>
+                            {orig.naoResolvido} não resolvidos
+                          </span>
+                        </span>
+                      </div>
+                      <div className="stacked-bar-track">
+                        <div className="stacked-segment" style={{ width: `${pct}%`, background: "#10b981" }} title={`Concluído: ${orig.concluido}`} />
+                        <div className="stacked-segment" style={{ width: `${pctAnd}%`, background: "#3b82f6" }} title={`Em andamento: ${orig.andamento}`} />
+                        <div className="stacked-segment" style={{ width: `${pctNao}%`, background: "#f59e0b" }} title={`Não iniciado: ${orig.naoIniciado}`} />
+                        <div className="stacked-segment" style={{ width: `${pctAtr}%`, background: "#ef4444" }} title={`Atrasado: ${orig.atrasado}`} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* EXPLICATIVO AO LADO DO GRÁFICO 1 */}
+            <div className="explainer-card">
+              <span className="explainer-badge">
+                <Info size={13} /> Dados Explicativos — Leitura Executiva 5W2H
+              </span>
+              <div className="explainer-title">
+                O que os dados das duas planilhas revelam sobre o momento do projeto?
+              </div>
+              <ul className="explainer-list">
+                <li>
+                  <strong>Fase de Estruturação Concluída ({dashboard.kpis.pctConcluido}%):</strong> Nas duas planilhas, a etapa macro de planejamento, mapeamento de processos, política de gestão de riscos e o item <em>&ldquo;Implementar Sistema&rdquo;</em> já constam como <strong>Concluídos</strong>, confirmando que a plataforma de vendas já está em operação.
+                </li>
+                <li className="warn">
+                  <strong>Gargalo na Planilha Financeiro (Karine — 45 itens):</strong> Há <strong>11 planos em andamento</strong> e <strong>4 atrasados</strong> concentrados na camada contábil e de segurança: <em>Aba contabilidade – sistema de dupla entrada</em>, <em>Raiz da conta bancária</em>, <em>Ativo e passivo no plano de contas</em> e <em>Aba segurança (3DS 2.0 e Softdescriptor)</em>.
+                </li>
+                <li className="danger">
+                  <strong>15 Itens Marcados como &ldquo;NÃO RESOLVIDO&rdquo; na Aba 2H:</strong> São decisões de negócio e travas técnicas entre a <strong>Disk (Karine / Vinicius)</strong> e o <strong>Guilherme</strong> — como a regra exata de <em>Dividir a taxa (80/20)</em>, cálculo de <em>SPREAD</em>, múltiplas bandeiras (<em>REDE / PAG</em>) e se pode ser liberado até 100% do valor no caixa da Disk.
+                </li>
+              </ul>
+
+              <div className="explainer-kpi-strip">
+                <div className="explainer-mini-stat">
+                  <span>Planilha Financeiro</span>
+                  <strong>22 / 45 (49%)</strong>
+                </div>
+                <div className="explainer-mini-stat">
+                  <span>Planilha Suporte</span>
+                  <strong>164 / 180 (91%)</strong>
+                </div>
+                <div className="explainer-mini-stat">
+                  <span>Pendências 2H</span>
+                  <strong style={{ color: "#f87171" }}>15 Não Resolvidos</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* =================================================================
+              ROW 2: GRÁFICO DE BARRAS POR ÁREA E RESPONSÁVEL (ESQUERDA)
+                     + DADOS EXPLICATIVOS DE ALOCAÇÃO DE EQUIPE (DIREITA)
+             ================================================================= */}
+          <div className="chart-explainer-row">
+            <div className="chart-card">
+              <div>
+                <div className="panel-title" style={{ marginBottom: 2, display: "flex", alignItems: "center", gap: 8 }}>
+                  <BarChart3 size={17} color="#10b981" />
+                  2. Execução por Área (CAD_a) e Carga por Responsável (CAD_f)
+                </div>
+                <div style={{ fontSize: 12, color: "#94a3b8" }}>
+                  Volume de tarefas atribuídas, taxa de entrega e concentração de atrasos por líder
+                </div>
+              </div>
+
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "#94a3b8", marginBottom: 8 }}>
+                  Por Departamento (Aba CAD_a):
+                </div>
+                {dashboard.porArea.map((a: any) => {
+                  const pctDone = a.total ? Math.round((a.concluido / a.total) * 100) : 0;
+                  const pctOpen = 100 - pctDone;
+                  return (
+                    <div key={a.area} className="stacked-bar-row">
+                      <div className="stacked-bar-header">
+                        <span>
+                          <strong>{a.area}</strong> ({a.total} itens)
+                        </span>
+                        <span>
+                          <span style={{ color: "#34d399", fontWeight: 600 }}>{a.concluido} concluídos ({pctDone}%)</span>
+                          {a.atrasado > 0 && (
+                            <span style={{ color: "#f87171", marginLeft: 8, fontWeight: 600 }}>
+                              • {a.atrasado} atrasados
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                      <div className="stacked-bar-track">
+                        <div className="stacked-segment" style={{ width: `${pctDone}%`, background: "#10b981" }} />
+                        <div className="stacked-segment" style={{ width: `${pctOpen}%`, background: "#f59e0b" }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div style={{ borderTop: "1px solid #162a21", paddingTop: 12 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "#94a3b8", marginBottom: 8 }}>
+                  Por Responsável Direto (Aba CAD_f + 2H):
+                </div>
+                {dashboard.porResponsavel.map((r: any) => {
+                  const pctDone = r.total ? Math.round((r.concluido / r.total) * 100) : 0;
+                  return (
+                    <div key={r.responsavel} className="stacked-bar-row" style={{ marginBottom: 10 }}>
+                      <div className="stacked-bar-header">
+                        <strong>{r.responsavel}</strong>
+                        <span style={{ fontSize: 12 }}>
+                          {r.concluido}/{r.total} ({pctDone}%)
+                          {r.naoResolvido > 0 && (
+                            <span className="tag tag-red" style={{ marginLeft: 6 }}>
+                              {r.naoResolvido} Não Resolvido
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                      <div className="stacked-bar-track" style={{ height: 9 }}>
+                        <div className="stacked-segment" style={{ width: `${pctDone}%`, background: "#3b82f6" }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* EXPLICATIVO AO LADO DO GRÁFICO 2 */}
+            <div className="explainer-card">
+              <span className="explainer-badge">
+                <Users size={13} /> Dados Explicativos — Responsabilidades por Área
+              </span>
+              <div className="explainer-title">
+                Como o trabalho está distribuído entre Suporte, Financeiro, Diretoria e Guilherme?
+              </div>
+              <ul className="explainer-list">
+                <li>
+                  <strong>Guilherme (Plataforma & Desenvolvimento):</strong> É o ponto focal técnico citado tanto na coluna <em>Onde</em> da aba <code>5W</code> quanto na coluna <em>How (Como será feito)</em> da aba <code>2H</code>. Concentra as entregas de código, regras de checkout, borderô e mapa de assentos.
+                </li>
+                <li>
+                  <strong>Vinicius Casagrande (Suporte & Operações):</strong> Conduz a implantação do sistema, controles internos de gestão de riscos e a bateria de homologação marcada nas planilhas como <code>TESTAR DISK</code> e <code>TESTE OK</code>. Possui 1 item atrasado na aba 5W: <em>&ldquo;Definição e adoção de ferramenta de Monitoramento&rdquo;</em>.
+                </li>
+                <li className="warn">
+                  <strong>Karine Santos (Financeiro):</strong> Concentra todas as 38 ações da planilha Financeiro. Já concluiu 22 itens (políticas e manuais de risco/compliance), mas possui 16 itens abertos ligados à parametrização contábil, taxas por bandeira, split 80/20 e repasse a produtores.
+                </li>
+                <li>
+                  <strong>Naila, Eder e Jackson (Diretoria):</strong> Já concluíram as aprovações formais da <em>Política de Gestão de Riscos</em>, <em>Metodologia de Riscos</em> e <em>Integração do Programa de Integridade</em>, atuando agora na alçada decisória sobre limites de antecipação de caixa.
+                </li>
+              </ul>
+
+              <div style={{ marginTop: "auto", display: "flex", gap: 10 }}>
+                <button
+                  className="btn-emerald"
+                  onClick={() => {
+                    setFiltro5wStatus("Atrasado");
+                    setActiveModule("plano5w2h");
+                  }}
+                >
+                  Ver Itens Atrasados no 5W2H <ArrowRight size={14} />
+                </button>
+                <button
+                  className="btn-secondary"
+                  onClick={() => {
+                    setApenasNaoResolvidos(true);
+                    setActiveModule("plano5w2h");
+                  }}
+                >
+                  Filtrar 15 Não Resolvidos
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* =================================================================
+              ROW 3: GRÁFICO DE SOLICITAÇÕES & AJUSTES DA PLATAFORMA POR MÓDULO E MÊS (ESQUERDA)
+                     + DADOS EXPLICATIVOS DO BACKLOG DE 445 AJUSTES (DIREITA)
+             ================================================================= */}
+          <div className="chart-explainer-row">
+            <div className="chart-card">
+              <div>
+                <div className="panel-title" style={{ marginBottom: 2, display: "flex", alignItems: "center", gap: 8 }}>
+                  <Activity size={17} color="#10b981" />
+                  3. Solicitações & Ajustes da Plataforma por Módulo e Safra Mensal
+                </div>
+                <div style={{ fontSize: 12, color: "#94a3b8" }}>
+                  Origem: Planilha &ldquo;datas das solicitaçoes e ajustes.xlsx&rdquo; ({dashboard.kpis.reqTotal} solicitações técnicas mapeadas)
+                </div>
+              </div>
+
+              <div>
+                {dashboard.solicitacoesPorModulo.map((m: any) => {
+                  const pct = m.total ? Math.round((m.concluidos / m.total) * 100) : 0;
+                  return (
+                    <div key={m.modulo} className="stacked-bar-row" style={{ marginBottom: 10 }}>
+                      <div className="stacked-bar-header">
+                        <strong>{m.modulo}</strong>
+                        <span>
+                          <span style={{ color: "#34d399", fontWeight: 600 }}>{m.concluidos} testados ☑️</span> de {m.total} ({pct}%)
+                        </span>
+                      </div>
+                      <div className="stacked-bar-track" style={{ height: 10 }}>
+                        <div className="stacked-segment" style={{ width: `${pct}%`, background: "#10b981" }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Vertical Column Chart by Month */}
+              {dashboard.solicitacoesPorMes && dashboard.solicitacoesPorMes.length > 0 && (
+                <div style={{ borderTop: "1px solid #162a21", paddingTop: 10 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#94a3b8", marginBottom: 4 }}>
+                    Volume de Solicitações de Ajustes por Mês (Jan/2025 – Abr/2026):
+                  </div>
+                  <div className="vbar-chart">
+                    {dashboard.solicitacoesPorMes.map((item: any) => {
+                      const maxVal = Math.max(...dashboard.solicitacoesPorMes.map((x: any) => x.total), 1);
+                      const heightPct = Math.max(10, Math.round((item.total / maxVal) * 100));
+                      const donePct = item.total ? Math.round((item.concluidos / item.total) * 100) : 0;
+                      return (
+                        <div key={item.mes} className="vbar-col" title={`${item.mes}: ${item.total} solicitações (${item.concluidos} testadas)`}>
+                          <span style={{ fontSize: 10.5, fontWeight: 700, color: "#ecfdf5" }}>{item.total}</span>
+                          <div className="vbar-pillar-wrap" style={{ height: `${heightPct}%` }}>
+                            <div style={{ height: `${100 - donePct}%`, background: "#1e3a8a", width: "100%" }} />
+                            <div style={{ height: `${donePct}%`, background: "#10b981", width: "100%" }} />
+                          </div>
+                          <span className="vbar-label">{item.mes.slice(5)}/{item.mes.slice(2, 4)}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* EXPLICATIVO AO LADO DO GRÁFICO 3 */}
+            <div className="explainer-card">
+              <span className="explainer-badge">
+                <Wrench size={13} /> Dados Explicativos — Radiografia dos Ajustes de Sistema
+              </span>
+              <div className="explainer-title">
+                O que compõe o backlog de {dashboard.kpis.reqTotal} solicitações da plataforma?
+              </div>
+              <ul className="explainer-list">
+                <li>
+                  <strong>Concentração em Eventos, Pedidos e Mapa de Assentos:</strong> Mais de 60% das demandas tratam da operação diária de venda de ingressos — bloqueio de quantidade para poltronas numeradas, preservação de curvatura de fileiras ao copiar setores, limite de ingressos por CPF no carrinho e ordenação de tickets por pedido.
+                </li>
+                <li className="warn">
+                  <strong>Demandas Críticas do Financeiro & Borderô:</strong> Incluem ajustes essenciais para a Fase 2: <em>&ldquo;Borderô: Adições → Créditos&rdquo;</em>, <em>&ldquo;Preview do Borderô: Exibir os dados de transferência bancária&rdquo;</em>, <em>&ldquo;Checkout: calcular tarifas quando a bandeira é Master&rdquo;</em> e <em>&ldquo;Tabela de Cálculo de Taxas visível apenas para o financeiro&rdquo;</em>.
+                </li>
+                <li>
+                  <strong>Reconhecimento Facial & App de Validação:</strong> O módulo de biometria facial (<code>disksite.karbonbox.com</code> / <code>beta.diskingressos.com.br</code>) teve o fluxo de cadastro documentado e ajustes de espelhamento de câmera e ocultação de campos redundantes no checkout.
+                </li>
+                <li>
+                  <strong>Taxa de Homologação (Plan3 vs. Plan1):</strong> Há <strong>{dashboard.kpis.reqDone} itens já homologados/concluídos</strong> (incluindo os 79 da aba <em>Plan3</em>), restando <strong>{dashboard.kpis.reqPending} itens</strong> para bateria de testes da equipe de Suporte.
+                </li>
+              </ul>
+
+              <div className="explainer-kpi-strip">
+                <div className="explainer-mini-stat">
+                  <span>Setor Suporte (Plan2)</span>
+                  <strong>55,5% das demandas</strong>
+                </div>
+                <div className="explainer-mini-stat">
+                  <span>Setor Financeiro</span>
+                  <strong>5,6% (Borderô/Taxas)</strong>
+                </div>
+                <div className="explainer-mini-stat">
+                  <span>Homologados ☑️</span>
+                  <strong style={{ color: "#34d399" }}>{dashboard.kpis.reqDone} concluídos</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* =================================================================
+              ROW 4: GRÁFICO DE COMPOSIÇÃO FINANCEIRA & RAZÃO CONTÁBIL (ESQUERDA)
+                     + DADOS EXPLICATIVOS DA FASE 2 & PERGUNTAS ABERTAS (DIREITA)
+             ================================================================= */}
+          <div className="chart-explainer-row">
+            <div className="chart-card">
+              <div>
+                <div className="panel-title" style={{ marginBottom: 2, display: "flex", alignItems: "center", gap: 8 }}>
+                  <Landmark size={17} color="#10b981" />
+                  4. Estrutura Financeira (Fase 2) — Fluxo de Venda, Taxas e Balancete
+                </div>
+                <div style={{ fontSize: 12, color: "#94a3b8" }}>
+                  Modelo de dupla entrada em centavos para cada R$ 1.000,00 vendidos (Comissão 20% / Gateway 2,99%)
+                </div>
+              </div>
+
+              {/* Visual Breakdown Bar of a Ticket Sale */}
+              <div style={{ background: "#091410", padding: 14, borderRadius: 8, border: "1px solid #162a21" }}>
+                <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8, color: "#ecfdf5" }}>
+                  Anatomia Contábil de uma Venda de Ingresso (Exemplo: R$ 1.000,00 no Crédito à vista):
+                </div>
+                <div className="stacked-bar-track" style={{ height: 22, marginBottom: 10 }}>
+                  <div
+                    className="stacked-segment"
+                    style={{ width: "80%", background: "#f59e0b", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "#000" }}
+                  >
+                    80% Repasse Produtor (R$ 800,00)
+                  </div>
+                  <div
+                    className="stacked-segment"
+                    style={{ width: "17.01%", background: "#10b981", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10.5, fontWeight: 700, color: "#000" }}
+                  >
+                    17,01% Líquido Disk
+                  </div>
+                  <div
+                    className="stacked-segment"
+                    style={{ width: "2.99%", background: "#ef4444" }}
+                    title="Taxa Gateway: 2,99% (R$ 29,90)"
+                  />
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11.5, color: "#94a3b8", flexWrap: "wrap", gap: 8 }}>
+                  <span>• <strong>D 1.1.02 Recebíveis Gateway:</strong> R$ 970,10</span>
+                  <span>• <strong>D 4.1.01 Taxa Gateway (2,99%):</strong> R$ 29,90</span>
+                  <span>• <strong>C 3.1.01 Comissão Disk (20%):</strong> R$ 200,00</span>
+                  <span>• <strong>C 2.1.01 Repasse Produtor (80%):</strong> R$ 800,00</span>
+                </div>
+              </div>
+
+              {/* Current Trial Balance Bars */}
+              <div style={{ borderTop: "1px solid #162a21", paddingTop: 10 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "#94a3b8", marginBottom: 8 }}>
+                  Saldos Atuais das Contas Analíticas no PostgreSQL 16:
+                </div>
+                {balancete.contas.map(c => (
+                  <div
+                    key={c.id}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      padding: "6px 10px",
+                      borderBottom: "1px solid #13261e",
+                      fontSize: 12.5
+                    }}
+                  >
+                    <span>
+                      <strong>{c.codigo}</strong> {c.nome}
+                    </span>
+                    <span>
+                      <span style={{ color: "#94a3b8", marginRight: 12 }}>
+                        D: {formatBRL(c.debitos_centavos)} | C: {formatBRL(c.creditos_centavos)}
+                      </span>
+                      <strong style={{ color: c.saldo_centavos >= 0 ? "#34d399" : "#f87171" }}>
+                        Saldo: {formatBRL(c.saldo_centavos)}
+                      </strong>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* EXPLICATIVO AO LADO DO GRÁFICO 4 */}
+            <div className="explainer-card">
+              <span className="explainer-badge">
+                <ShieldCheck size={13} /> Dados Explicativos — Regras Inegociáveis do Financeiro
+              </span>
+              <div className="explainer-title">
+                Por que o núcleo financeiro foi construído com Dupla Entrada e Centavos?
+              </div>
+              <ul className="explainer-list">
+                <li>
+                  <strong>Zero Erro de Arredondamento (Inteiros em Centavos & Basis Points):</strong> Todo valor monetário no banco (`partidas`, `vendas`, `repasses`) é salvo como `bigint` em centavos (`R$ 1.000,00 = 100000`) e as taxas em <em>basis points</em> (`2,99% = 299 bps`), eliminando diferenças de centavos nos borderôs dos produtores.
+                </li>
+                <li>
+                  <strong>Razão Contábil Imutável por Trigger no Banco:</strong> As tabelas `lancamentos` e `partidas` possuem triggers PostgreSQL (`trg_balanceamento` e `bloqueia_alteracao`) que impedem qualquer `UPDATE` ou `DELETE` e garantem que nenhum lançamento exista se a soma dos débitos for diferente da soma dos créditos.
+                </li>
+                <li className="warn">
+                  <strong>Parâmetros Configuráveis para as Dúvidas da Aba 2H:</strong> Enquanto o Financeiro valida as 7 perguntas abertas (como quem absorve a taxa do gateway em cada evento e o limite de antecipação), o módulo <strong>Financeiro (Fase 2)</strong> permite parametrizar a comissão e quem paga a taxa em cada venda.
+                </li>
+              </ul>
+
+              <div style={{ marginTop: "auto", display: "flex", gap: 10 }}>
+                <button
+                  className="btn-emerald"
+                  onClick={() => {
+                    setFinTab("pagamentos");
+                    setActiveModule("financeiro");
+                  }}
+                >
+                  Simular e Registrar Venda (Fase 2) <ArrowRight size={14} />
+                </button>
+                <button
+                  className="btn-secondary"
+                  onClick={() => {
+                    setFinTab("balancete");
+                    setActiveModule("financeiro");
+                  }}
+                >
+                  Abrir Balancete Contábil
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* =================================================================
+              TABELA DE DESTAQUE: ITENS ATRASADOS E "NÃO RESOLVIDO"
+             ================================================================= */}
+          <div className="panel-no-pad">
+            <div
+              style={{
+                padding: "14px 18px",
+                borderBottom: "1px solid #1e382d",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center"
+              }}
+            >
+              <div style={{ fontWeight: 700, color: "#f87171", display: "flex", alignItems: "center", gap: 8 }}>
+                <AlertTriangle size={16} />
+                Lista de Atenção Imediata: Itens Atrasados (5W) ou Marcados como &ldquo;NÃO RESOLVIDO&rdquo; (2H)
+              </div>
+              <button
+                className="btn-secondary"
+                style={{ padding: "5px 12px", fontSize: 12 }}
+                onClick={() => setActiveModule("plano5w2h")}
+              >
+                Abrir Plano 5W2H Completo
+              </button>
+            </div>
+            <table className="fin-table">
+              <thead>
+                <tr>
+                  <th>Origem</th>
+                  <th>Plano de Ação / Questão Pendente</th>
+                  <th>Responsável</th>
+                  <th>Área</th>
+                  <th>Como / Ponto Focal (2H)</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dashboard.atrasadosDestaque.map((p: any) => (
+                  <tr key={p.id}>
+                    <td><span className="tag tag-slate">{p.origem_planilha}</span></td>
+                    <td style={{ fontWeight: 600 }}>{p.plano}</td>
+                    <td>{p.who_nome}</td>
+                    <td>{p.area_nome}</td>
+                    <td style={{ color: "#94a3b8" }}>{p.fim_planejado || "Verificar com Guilherme / Disk"}</td>
+                    <td>
+                      {p.nao_resolvido && (
+                        <span className="tag tag-red" style={{ marginRight: 6 }}>
+                          NÃO RESOLVIDO
+                        </span>
+                      )}
+                      <span className="tag tag-amber">{p.status}</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </main>
+      )}
+
+      {/* =====================================================================
           MODULE 1: FINANCEIRO – RAZÃO CONTÁBIL E PAGAMENTOS (EXACT VIDEO UI)
          ===================================================================== */}
       {activeModule === "financeiro" && (
@@ -522,7 +1340,6 @@ export default function App() {
             Fase 2: plano de contas, lançamentos de dupla entrada e métodos de pagamento com taxas.
           </p>
 
-          {/* 4 Sub-tabs identical to video */}
           <div className="subtabs-bar">
             <button
               className={`subtab-btn ${finTab === "contas" ? "active" : ""}`}
@@ -550,9 +1367,6 @@ export default function App() {
             </button>
           </div>
 
-          {/* -----------------------------------------------------------------
-              SUBTAB 1: PLANO DE CONTAS (Video 00:00 - 00:05)
-             ----------------------------------------------------------------- */}
           {finTab === "contas" && (
             <>
               <div className="panel-no-pad">
@@ -619,9 +1433,6 @@ export default function App() {
             </>
           )}
 
-          {/* -----------------------------------------------------------------
-              SUBTAB 2: LANÇAMENTOS (Video 00:06 - 00:11)
-             ----------------------------------------------------------------- */}
           {finTab === "lancamentos" && (
             <>
               <div className="amber-notice">
@@ -760,9 +1571,6 @@ export default function App() {
             </>
           )}
 
-          {/* -----------------------------------------------------------------
-              SUBTAB 3: BALANCETE (Video 00:11 - 00:13)
-             ----------------------------------------------------------------- */}
           {finTab === "balancete" && (
             <>
               <div className="panel-no-pad">
@@ -808,9 +1616,6 @@ export default function App() {
             </>
           )}
 
-          {/* -----------------------------------------------------------------
-              SUBTAB 4: PAGAMENTOS E TAXAS (Video 00:13 - 00:17)
-             ----------------------------------------------------------------- */}
           {finTab === "pagamentos" && (
             <>
               <div className="panel">
@@ -995,160 +1800,6 @@ export default function App() {
               </div>
             </>
           )}
-        </main>
-      )}
-
-      {/* =====================================================================
-          MODULE 2: DASHBOARD EXECUTIVO (TAREFA T7)
-         ===================================================================== */}
-      {activeModule === "dashboard" && dashboard && (
-        <main className="page-container">
-          <h1 className="page-title">Dashboard Executivo — 5W2H & Financeiro</h1>
-          <p className="page-subtitle">
-            Visão unificada das planilhas 5W2H (Financeiro e Suporte), solicitações de plataforma e saldos do razão contábil.
-          </p>
-
-          <div className="kpi-grid-dark">
-            <div className="kpi-box">
-              <div className="kpi-box-label">Planos & Tarefas 5W2H Concluídos</div>
-              <div className="kpi-box-val">
-                {dashboard.kpis.concluidos} / {dashboard.kpis.totalPlanos} ({dashboard.kpis.pctConcluido}%)
-              </div>
-              <div className="progress-bar-dark">
-                <div className="progress-fill-dark" style={{ width: `${dashboard.kpis.pctConcluido}%` }} />
-              </div>
-            </div>
-
-            <div className="kpi-box">
-              <div className="kpi-box-label">Atrasados / Não Resolvidos na Aba 2H</div>
-              <div className="kpi-box-val" style={{ color: "#f87171" }}>
-                {dashboard.kpis.atrasados} atrasados • {dashboard.kpis.naoResolvidos} não resolvidos
-              </div>
-              <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 6 }}>
-                Clique em Plano 5W2H para filtrar pendências
-              </div>
-            </div>
-
-            <div className="kpi-box">
-              <div className="kpi-box-label">Ajustes da Plataforma (Guilherme)</div>
-              <div className="kpi-box-val">
-                {dashboard.kpis.reqDone} / {dashboard.kpis.reqTotal} ({dashboard.kpis.pctReq}%)
-              </div>
-              <div className="progress-bar-dark">
-                <div className="progress-fill-dark" style={{ width: `${dashboard.kpis.pctReq}%` }} />
-              </div>
-            </div>
-
-            {dashboard.financeiroResumo ? (
-              <div className="kpi-box">
-                <div className="kpi-box-label">Saldo Banco (1.1.01) / A Repassar (2.1.01)</div>
-                <div className="kpi-box-val" style={{ fontSize: 18, color: "#34d399" }}>
-                  Banco: {formatBRL(dashboard.financeiroResumo.saldo_banco_centavos)}
-                </div>
-                <div style={{ fontSize: 12.5, color: "#fbbf24", marginTop: 4 }}>
-                  A Repassar: {formatBRL(dashboard.financeiroResumo.a_repassar_produtores_centavos)}
-                </div>
-              </div>
-            ) : (
-              <div className="kpi-box">
-                <div className="kpi-box-label">Resumo Financeiro (RBAC)</div>
-                <div style={{ fontSize: 12.5, color: "#fbbf24", marginTop: 6 }}>
-                  <Lock size={14} style={{ verticalAlign: "middle", marginRight: 4 }} />
-                  Oculto para o perfil &ldquo;{currentUser.perfil}&rdquo;
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
-            <div className="panel-no-pad">
-              <div style={{ padding: "14px 16px", borderBottom: "1px solid #1e382d", fontWeight: 700 }}>
-                Execução por Área (CAD_a)
-              </div>
-              <table className="fin-table">
-                <thead>
-                  <tr>
-                    <th>Área</th>
-                    <th>Total</th>
-                    <th>Concluídos</th>
-                    <th>Atrasados</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {dashboard.porArea.map((a: any) => (
-                    <tr key={a.area}>
-                      <td style={{ fontWeight: 600 }}>{a.area}</td>
-                      <td>{a.total}</td>
-                      <td><span className="tag tag-emerald">{a.concluido}</span></td>
-                      <td>
-                        {a.atrasado > 0 ? <span className="tag tag-red">{a.atrasado}</span> : "0"}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="panel-no-pad">
-              <div style={{ padding: "14px 16px", borderBottom: "1px solid #1e382d", fontWeight: 700 }}>
-                Execução por Responsável (CAD_f)
-              </div>
-              <table className="fin-table">
-                <thead>
-                  <tr>
-                    <th>Responsável</th>
-                    <th>Total</th>
-                    <th>Concluídos</th>
-                    <th>Atrasados</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {dashboard.porResponsavel.map((r: any) => (
-                    <tr key={r.responsavel}>
-                      <td style={{ fontWeight: 600 }}>{r.responsavel}</td>
-                      <td>{r.total}</td>
-                      <td><span className="tag tag-emerald">{r.concluido}</span></td>
-                      <td>
-                        {r.atrasado > 0 ? <span className="tag tag-red">{r.atrasado}</span> : "0"}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <div className="panel-no-pad" style={{ marginTop: 18 }}>
-            <div style={{ padding: "14px 16px", borderBottom: "1px solid #1e382d", fontWeight: 700, color: "#f87171" }}>
-              <AlertTriangle size={15} style={{ verticalAlign: "middle", marginRight: 6 }} />
-              Itens Atrasados ou Marcados como &ldquo;NÃO RESOLVIDO&rdquo; em Destaque
-            </div>
-            <table className="fin-table">
-              <thead>
-                <tr>
-                  <th>Origem</th>
-                  <th>Plano de Ação / Item</th>
-                  <th>Responsável</th>
-                  <th>Área</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {dashboard.atrasadosDestaque.map((p: any) => (
-                  <tr key={p.id}>
-                    <td><span className="tag tag-slate">{p.origem_planilha}</span></td>
-                    <td style={{ fontWeight: 600 }}>{p.plano}</td>
-                    <td>{p.who_nome}</td>
-                    <td>{p.area_nome}</td>
-                    <td>
-                      {p.nao_resolvido && <span className="tag tag-red" style={{ marginRight: 6 }}>NÃO RESOLVIDO</span>}
-                      <span className="tag tag-amber">{p.status}</span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
         </main>
       )}
 

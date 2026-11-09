@@ -221,25 +221,48 @@ export async function buildServer() {
     const naoIniciados = planos.filter(p => p.status === "Não iniciado").length;
     const naoResolvidos = planos.filter(p => p.nao_resolvido).length;
 
-    const byAreaMap: Record<string, { area: string; total: number; concluido: number; andamento: number; atrasado: number }> = {};
-    const byWhoMap: Record<string, { responsavel: string; total: number; concluido: number; atrasado: number }> = {};
+    const byAreaMap: Record<string, { area: string; total: number; concluido: number; andamento: number; atrasado: number; naoIniciado: number; naoResolvido: number }> = {};
+    const byWhoMap: Record<string, { responsavel: string; total: number; concluido: number; andamento: number; atrasado: number; naoResolvido: number }> = {};
+    const byPriorityMap: Record<string, { prioridade: string; total: number; concluido: number; pendente: number }> = {};
+    const byOrigemMap: Record<string, { origem: string; total: number; concluido: number; andamento: number; atrasado: number; naoIniciado: number; naoResolvido: number }> = {
+      FINANCEIRO: { origem: "Planilha Financeiro (Karine)", total: 0, concluido: 0, andamento: 0, atrasado: 0, naoIniciado: 0, naoResolvido: 0 },
+      SUPORTE: { origem: "Planilha Suporte & Riscos (Vinicius)", total: 0, concluido: 0, andamento: 0, atrasado: 0, naoIniciado: 0, naoResolvido: 0 }
+    };
 
     for (const p of planos) {
       const a = p.area_nome || "GERAL";
-      if (!byAreaMap[a]) byAreaMap[a] = { area: a, total: 0, concluido: 0, andamento: 0, atrasado: 0 };
+      if (!byAreaMap[a]) byAreaMap[a] = { area: a, total: 0, concluido: 0, andamento: 0, atrasado: 0, naoIniciado: 0, naoResolvido: 0 };
       byAreaMap[a].total++;
       if (p.status === "Concluído") byAreaMap[a].concluido++;
       else if (p.status === "Atrasado") byAreaMap[a].atrasado++;
+      else if (p.status === "Não iniciado") byAreaMap[a].naoIniciado++;
       else byAreaMap[a].andamento++;
+      if (p.nao_resolvido) byAreaMap[a].naoResolvido++;
 
       const w = p.who_nome || "EQUIPE DISK";
-      if (!byWhoMap[w]) byWhoMap[w] = { responsavel: w, total: 0, concluido: 0, atrasado: 0 };
+      if (!byWhoMap[w]) byWhoMap[w] = { responsavel: w, total: 0, concluido: 0, andamento: 0, atrasado: 0, naoResolvido: 0 };
       byWhoMap[w].total++;
       if (p.status === "Concluído") byWhoMap[w].concluido++;
-      if (p.status === "Atrasado") byWhoMap[w].atrasado++;
+      else if (p.status === "Atrasado") byWhoMap[w].atrasado++;
+      else byWhoMap[w].andamento++;
+      if (p.nao_resolvido) byWhoMap[w].naoResolvido++;
+
+      const prio = p.prioridade || "Urgente";
+      if (!byPriorityMap[prio]) byPriorityMap[prio] = { prioridade: prio, total: 0, concluido: 0, pendente: 0 };
+      byPriorityMap[prio].total++;
+      if (p.status === "Concluído") byPriorityMap[prio].concluido++;
+      else byPriorityMap[prio].pendente++;
+
+      const origKey = String(p.origem_planilha || "").startsWith("FINANCEIRO") ? "FINANCEIRO" : "SUPORTE";
+      byOrigemMap[origKey].total++;
+      if (p.status === "Concluído") byOrigemMap[origKey].concluido++;
+      else if (p.status === "Atrasado") byOrigemMap[origKey].atrasado++;
+      else if (p.status === "Não iniciado") byOrigemMap[origKey].naoIniciado++;
+      else byOrigemMap[origKey].andamento++;
+      if (p.nao_resolvido) byOrigemMap[origKey].naoResolvido++;
     }
 
-    // Solicitações da Plataforma
+    // Solicitações da Plataforma por módulo e por mês/data
     const reqStats = await db.query<{
       modulo: string;
       total: string;
@@ -250,6 +273,25 @@ export async function buildServer() {
       GROUP BY modulo
       ORDER BY COUNT(*) DESC
     `);
+
+    const reqByDateStats = await db.query<{
+      mes: string;
+      total: string;
+      concluidos: string;
+    }>(`
+      SELECT SUBSTRING(data_solicitacao::text, 1, 7) as mes,
+             COUNT(*) as total,
+             SUM(CASE WHEN concluido THEN 1 ELSE 0 END) as concluidos
+      FROM solicitacoes_plataforma
+      GROUP BY SUBSTRING(data_solicitacao::text, 1, 7)
+      ORDER BY mes ASC
+    `);
+
+    const pergStats = await db.query<{ status: string; c: string }>(
+      `SELECT status, COUNT(*) as c FROM perguntas_abertas GROUP BY status`
+    );
+    const totalPerguntas = pergStats.rows.reduce((acc, r) => acc + Number(r.c), 0);
+    const perguntasDecididas = pergStats.rows.filter(r => r.status === "Decidido").reduce((acc, r) => acc + Number(r.c), 0);
 
     const reqTotal = reqStats.rows.reduce((acc, r) => acc + Number(r.total), 0);
     const reqDone = reqStats.rows.reduce((acc, r) => acc + Number(r.concluidos), 0);
@@ -272,13 +314,23 @@ export async function buildServer() {
         reqTotal,
         reqDone,
         reqPending: reqTotal - reqDone,
-        pctReq: reqTotal ? Math.round((reqDone / reqTotal) * 100) : 0
+        pctReq: reqTotal ? Math.round((reqDone / reqTotal) * 100) : 0,
+        totalPerguntas,
+        perguntasDecididas,
+        perguntasPendentes: totalPerguntas - perguntasDecididas
       },
-      atrasadosDestaque: planos.filter(p => p.status === "Atrasado" || p.nao_resolvido).slice(0, 12),
+      atrasadosDestaque: planos.filter(p => p.status === "Atrasado" || p.nao_resolvido).slice(0, 14),
       porArea: Object.values(byAreaMap),
       porResponsavel: Object.values(byWhoMap),
+      porPrioridade: Object.values(byPriorityMap),
+      porOrigem: Object.values(byOrigemMap),
       solicitacoesPorModulo: reqStats.rows.map(r => ({
         modulo: r.modulo,
+        total: Number(r.total),
+        concluidos: Number(r.concluidos)
+      })),
+      solicitacoesPorMes: reqByDateStats.rows.map(r => ({
+        mes: r.mes,
         total: Number(r.total),
         concluidos: Number(r.concluidos)
       })),
