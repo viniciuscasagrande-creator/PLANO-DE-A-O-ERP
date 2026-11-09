@@ -1,0 +1,4 @@
+{ "recommendations": [
+  "google.geminicodeassist", "dbaeumer.vscode-eslint", "esbenp.prettier-vscode",
+  "ms-azuretools.vscode-docker", "ckolkman.vscode-postgres", "bradlc.vscode-tailwindcss"
+] }
