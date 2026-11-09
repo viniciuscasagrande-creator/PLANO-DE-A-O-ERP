@@ -396,15 +396,16 @@ export async function importSpreadsheets(customDataDir?: string): Promise<Import
         });
       }
 
-      // 4A. Import/Update every row of 5W (38 Financeiro + 25 Suporte = 63 rows)
+      // 4A. Import/Update every row of 5W (Financeiro + Suporte)
       for (const r of rows5W) {
-        if (r._r <= 5) continue;
+        if (r._r <= 4) continue;
         const plano = cleanCell(r.C);
         const what = cleanCell(r.E);
         if (!plano && !what) {
           report.planosRejeitados++;
           continue;
         }
+        if (plano.toLowerCase() === "plano de ação") continue;
         const title = plano || what;
         const prioridade = cleanCell(r.D) || "Muito Urgente";
         const why = cleanCell(r.F);
@@ -419,13 +420,13 @@ export async function importSpreadsheets(customDataDir?: string): Promise<Import
         const prazoDias = Number(r.J) || 30;
         const fimPlanejado = excelSerialToISO(r.K) || "2026-03-03";
         const fimReal = excelSerialToISO(r.L);
-        const onde = cleanCell(r.M) || "DISK";
+        const onde = cleanCell(r.M);
         const statusRaw = cleanCell(r.P) || exeMap.get(title.toLowerCase())?.statusExe || "Em andamento";
         const status = normalizeStatus(statusRaw);
         const exeInfo = exeMap.get(title.toLowerCase());
         const tProg = exeInfo?.prog ?? 1;
         const tReal = exeInfo?.real ?? (status === "Concluído" ? 1 : 0);
-        const etapaTeste = classifyEtapaTeste(onde, onde);
+        const etapaTeste = classifyEtapaTeste(onde || "DISK", onde || "DISK");
 
         const rowKey = `${origem}::5W::${r._r}`;
         const existingId = rowLookup.get(rowKey);
@@ -441,7 +442,7 @@ export async function importSpreadsheets(customDataDir?: string): Promise<Import
             [
               title,
               prioridade,
-              what || title,
+              what,
               why,
               whoId,
               areaId,
@@ -471,7 +472,7 @@ export async function importSpreadsheets(customDataDir?: string): Promise<Import
             [
               title,
               prioridade,
-              what || title,
+              what,
               why,
               whoId,
               areaId,
@@ -946,17 +947,17 @@ export async function syncPlanoAcaoToExcel(planoId: number): Promise<{ syncedFil
       } else {
         // Exact row in 5W + matching row in EXE
         const row1 = item.linha_planilha;
-        if (row1 && row1 > 5) {
+        if (row1 && row1 >= 5) {
           updatesBySheet["5W"].push(
             { cellRef: `C${row1}`, value: item.plano },
             { cellRef: `D${row1}`, value: item.prioridade },
-            { cellRef: `E${row1}`, value: item.what || item.plano },
+            { cellRef: `E${row1}`, value: item.what || "" },
+            { cellRef: `F${row1}`, value: item.why || "" },
+            { cellRef: `M${row1}`, value: item.onde || "" },
             { cellRef: `P${row1}`, value: item.status, keepFormula: true }
           );
-          if (item.why) updatesBySheet["5W"].push({ cellRef: `F${row1}`, value: item.why });
           if (item.who_nome) updatesBySheet["5W"].push({ cellRef: `G${row1}`, value: item.who_nome });
           if (item.area_nome) updatesBySheet["5W"].push({ cellRef: `H${row1}`, value: item.area_nome });
-          if (item.onde) updatesBySheet["5W"].push({ cellRef: `M${row1}`, value: item.onde });
         }
 
         const wsExe = wb.Sheets["EXE"];

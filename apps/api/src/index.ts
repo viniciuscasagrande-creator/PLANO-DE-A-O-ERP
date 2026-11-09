@@ -614,7 +614,10 @@ export async function buildServer() {
       FROM plano_acao p
       LEFT JOIN areas a ON a.id = p.area_id
       LEFT JOIN pessoas pe ON pe.id = p.who_id
-      ORDER BY p.nao_resolvido DESC, p.aba_origem ASC, p.linha_planilha ASC, p.id ASC
+      ORDER BY CASE WHEN p.aba_origem = '5W' THEN 0 ELSE 1 END ASC,
+               p.origem_planilha ASC,
+               p.linha_planilha ASC,
+               p.id ASC
     `);
     return res.rows.map(r => ({
       ...r,

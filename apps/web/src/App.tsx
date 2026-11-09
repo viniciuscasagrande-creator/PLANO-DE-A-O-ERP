@@ -228,8 +228,8 @@ export default function App() {
   const [caixaValorStr, setCaixaValorStr] = useState("");
 
   // Filters for 5W2H, Homologação & Solicitações
-  const [filtro5wOrigem, setFiltro5wOrigem] = useState("ALL");
-  const [filtro5wAba, setFiltro5wAba] = useState<"ALL" | "5W" | "2H" | "EXE">("ALL");
+  const [filtro5wOrigem, setFiltro5wOrigem] = useState("FINANCEIRO");
+  const [filtro5wAba, setFiltro5wAba] = useState<"ALL" | "5W" | "2H" | "EXE">("5W");
   const [filtro5wStatus, setFiltro5wStatus] = useState("ALL");
   const [apenasNaoResolvidos, setApenasNaoResolvidos] = useState(false);
   const [busca5w, setBusca5w] = useState("");
@@ -2213,53 +2213,221 @@ export default function App() {
       )}
 
       {/* =====================================================================
-          MODULE 3: PLANO DE AÇÃO 5W2H COMPLETO (ABAS 5W, 2H E EXE — SINCRONIZAÇÃO BIDIRECIONAL)
+          MODULE 3: PLANOS DE AÇÃO — ABAS 5W, 2H E ACOMPANHAMENTO DE EXECUÇÃO (IDÊNTICO À PLANILHA)
          ===================================================================== */}
       {activeModule === "plano5w2h" && (
         <main className="page-container-wide">
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
-            <div>
-              <h1 className="page-title">Plano de Ação 5W2H Completo (Abas 5W, 2H & Execução EXE)</h1>
-              <p className="page-subtitle" style={{ marginBottom: 0 }}>
-                {planos.length} linhas oficiais sincronizadas em mão dupla (63 Planos Macro da Aba 5W + 202 Tarefas/Ajustes da Aba 2H).
-              </p>
-            </div>
-            <div style={{ display: "flex", gap: 8 }}>
-              <button className="btn-secondary" onClick={handleManualSyncPlanilhas} disabled={isSyncing}>
-                <RefreshCw size={14} /> Puxar das Planilhas
-              </button>
-              <button className="btn-emerald" onClick={() => setShowNew5wModal(!showNew5wModal)}>
-                <Plus size={14} /> Nova Ação 5W2H
-              </button>
-            </div>
-          </div>
+          {/* BARRA LARANJA E AZUL IDÊNTICA AO TOPO DA PLANILHA */}
+          <div
+            style={{
+              borderRadius: 10,
+              overflow: "hidden",
+              border: "1px solid #1e382d",
+              marginBottom: 16
+            }}
+          >
+            {/* Faixa Superior Laranja (Estilo DiskIngressos Planilha) */}
+            <div
+              style={{
+                background: "#ea580c",
+                padding: "10px 18px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                flexWrap: "wrap",
+                gap: 12
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap" }}>
+                <span style={{ fontWeight: 900, fontSize: 18, color: "#1e3a8a", fontStyle: "italic" }}>
+                  DiskIngressos
+                </span>
+                <button
+                  onClick={() => setActiveModule("cadastros")}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: "#fff",
+                    fontWeight: 700,
+                    fontSize: 12.5,
+                    cursor: "pointer"
+                  }}
+                >
+                  CADASTRO
+                </button>
+                <span
+                  style={{
+                    background: "#5b9bd5",
+                    color: "#fff",
+                    fontWeight: 800,
+                    fontSize: 12.5,
+                    padding: "6px 14px",
+                    borderRadius: 4
+                  }}
+                >
+                  PLANOS DE AÇÃO
+                </span>
+                <button
+                  onClick={() => setFiltro5wAba("EXE")}
+                  style={{
+                    background: filtro5wAba === "EXE" ? "#5b9bd5" : "transparent",
+                    border: "none",
+                    color: "#fff",
+                    fontWeight: 700,
+                    fontSize: 12.5,
+                    padding: "6px 12px",
+                    borderRadius: 4,
+                    cursor: "pointer"
+                  }}
+                >
+                  ACOMPANHAMENTO DE EXECUÇÃO
+                </button>
+                <button
+                  onClick={() => setActiveModule("dashboard")}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: "#fff",
+                    fontWeight: 700,
+                    fontSize: 12.5,
+                    cursor: "pointer"
+                  }}
+                >
+                  DASHBOARD
+                </button>
+              </div>
 
-          {/* SUB-ABAS DA ESTRUTURA DA PLANILHA: TODOS / ABA 5W / ABA 2H / ABA EXE */}
-          <div className="subtabs-bar" style={{ marginBottom: 16 }}>
-            <button
-              className={`subtab-btn ${filtro5wAba === "ALL" ? "active" : ""}`}
-              onClick={() => setFiltro5wAba("ALL")}
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  className="btn-secondary"
+                  style={{ background: "#0f221b", color: "#ecfdf5", borderColor: "#0f221b" }}
+                  onClick={handleManualSyncPlanilhas}
+                  disabled={isSyncing}
+                >
+                  <RefreshCw size={14} /> Puxar das Planilhas
+                </button>
+                <button
+                  className="btn-emerald"
+                  style={{ background: "#065f46", color: "#fff" }}
+                  onClick={() => setShowNew5wModal(!showNew5wModal)}
+                >
+                  <Plus size={14} /> Nova Linha 5W2H
+                </button>
+              </div>
+            </div>
+
+            {/* Faixa Azul com as Abas "5 W" e "2 H" idênticas à captura de tela */}
+            <div
+              style={{
+                background: "#5b9bd5",
+                padding: "8px 18px 0 18px",
+                display: "flex",
+                alignItems: "flex-end",
+                justifyContent: "space-between",
+                flexWrap: "wrap",
+                gap: 12
+              }}
             >
-              Todas as Linhas ({planos.length})
-            </button>
-            <button
-              className={`subtab-btn ${filtro5wAba === "5W" ? "active" : ""}`}
-              onClick={() => setFiltro5wAba("5W")}
-            >
-              Aba 5W — Planos Macro ({planos.filter(p => (p.aba_origem || "5W") === "5W").length})
-            </button>
-            <button
-              className={`subtab-btn ${filtro5wAba === "2H" ? "active" : ""}`}
-              onClick={() => setFiltro5wAba("2H")}
-            >
-              Aba 2H — Ajustes & Tarefas ({planos.filter(p => p.aba_origem === "2H").length})
-            </button>
-            <button
-              className={`subtab-btn ${filtro5wAba === "EXE" ? "active" : ""}`}
-              onClick={() => setFiltro5wAba("EXE")}
-            >
-              Aba EXE — Tarefas Programadas x Realizadas ({planos.filter(p => (p.aba_origem || "5W") === "5W").length})
-            </button>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button
+                  onClick={() => setFiltro5wAba("5W")}
+                  style={{
+                    background: filtro5wAba === "5W" ? "#ffffff" : "rgba(255,255,255,0.18)",
+                    color: filtro5wAba === "5W" ? "#0f172a" : "#ffffff",
+                    border: "none",
+                    padding: "8px 28px",
+                    fontWeight: 800,
+                    fontSize: 13.5,
+                    borderTopLeftRadius: 6,
+                    borderTopRightRadius: 6,
+                    cursor: "pointer"
+                  }}
+                >
+                  5 W ({planos.filter(p => (p.aba_origem || "5W") === "5W" && (filtro5wOrigem === "ALL" || p.origem_planilha === filtro5wOrigem)).length})
+                </button>
+                <button
+                  onClick={() => setFiltro5wAba("2H")}
+                  style={{
+                    background: filtro5wAba === "2H" ? "#ffffff" : "rgba(255,255,255,0.18)",
+                    color: filtro5wAba === "2H" ? "#0f172a" : "#ffffff",
+                    border: "none",
+                    padding: "8px 28px",
+                    fontWeight: 800,
+                    fontSize: 13.5,
+                    borderTopLeftRadius: 6,
+                    borderTopRightRadius: 6,
+                    cursor: "pointer"
+                  }}
+                >
+                  2 H ({planos.filter(p => p.aba_origem === "2H" && (filtro5wOrigem === "ALL" || p.origem_planilha === filtro5wOrigem)).length})
+                </button>
+                <button
+                  onClick={() => setFiltro5wAba("EXE")}
+                  style={{
+                    background: filtro5wAba === "EXE" ? "#ffffff" : "rgba(255,255,255,0.18)",
+                    color: filtro5wAba === "EXE" ? "#0f172a" : "#ffffff",
+                    border: "none",
+                    padding: "8px 22px",
+                    fontWeight: 800,
+                    fontSize: 13,
+                    borderTopLeftRadius: 6,
+                    borderTopRightRadius: 6,
+                    cursor: "pointer"
+                  }}
+                >
+                  EXE — Execução
+                </button>
+              </div>
+
+              {/* Seletor rápido da Planilha (Financeiro Karine vs Suporte Vinicius) */}
+              <div style={{ display: "flex", gap: 6, paddingBottom: 6, flexWrap: "wrap" }}>
+                <button
+                  onClick={() => setFiltro5wOrigem("FINANCEIRO")}
+                  style={{
+                    background: filtro5wOrigem === "FINANCEIRO" ? "#0f172a" : "rgba(15,23,42,0.35)",
+                    color: "#fff",
+                    border: "1px solid rgba(255,255,255,0.3)",
+                    borderRadius: 5,
+                    padding: "4px 12px",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    cursor: "pointer"
+                  }}
+                >
+                  Planilha Financeiro (Karine)
+                </button>
+                <button
+                  onClick={() => setFiltro5wOrigem("SUPORTE")}
+                  style={{
+                    background: filtro5wOrigem === "SUPORTE" ? "#0f172a" : "rgba(15,23,42,0.35)",
+                    color: "#fff",
+                    border: "1px solid rgba(255,255,255,0.3)",
+                    borderRadius: 5,
+                    padding: "4px 12px",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    cursor: "pointer"
+                  }}
+                >
+                  Planilha Suporte (Vinicius)
+                </button>
+                <button
+                  onClick={() => setFiltro5wOrigem("ALL")}
+                  style={{
+                    background: filtro5wOrigem === "ALL" ? "#0f172a" : "rgba(15,23,42,0.35)",
+                    color: "#fff",
+                    border: "1px solid rgba(255,255,255,0.3)",
+                    borderRadius: 5,
+                    padding: "4px 12px",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    cursor: "pointer"
+                  }}
+                >
+                  Ambas as Planilhas
+                </button>
+              </div>
+            </div>
           </div>
 
           {showNew5wModal && (
@@ -2274,30 +2442,31 @@ export default function App() {
                   </select>
                 </div>
                 <div className="field" style={{ flex: 1, minWidth: 220 }}>
-                  <label>Plano / Título (Coluna C)</label>
+                  <label>Plano de Ação (Coluna C)</label>
                   <input
                     className="input-dark"
-                    placeholder="Ex: Parametrizar taxa por bandeira..."
+                    placeholder="Ex: Aba contabilidade – sistema de dupla entrada..."
                     value={novo5wPlano}
                     onChange={e => setNovo5wPlano(e.target.value)}
                     required
                   />
                 </div>
                 <div className="field" style={{ flex: 1, minWidth: 200 }}>
-                  <label>Como / Responsável Técnico (Aba 2H)</label>
+                  <label>What — O que será feito (Coluna E)</label>
                   <input
                     className="input-dark"
-                    placeholder="Ex: Guilherme / TESTAR DISK"
-                    value={novo5wHow}
-                    onChange={e => setNovo5wHow(e.target.value)}
+                    placeholder="Descrição do que será feito..."
+                    value={novo5wWhat}
+                    onChange={e => setNovo5wWhat(e.target.value)}
                   />
                 </div>
                 <div className="field" style={{ width: 150 }}>
-                  <label>Prioridade</label>
+                  <label>Priorização (Coluna D)</label>
                   <select className="select-dark" value={novo5wPrioridade} onChange={e => setNovo5wPrioridade(e.target.value)}>
                     <option value="Muito Urgente">Muito Urgente</option>
                     <option value="Urgente">Urgente</option>
                     <option value="Normal">Normal</option>
+                    <option value="Pouco Urgente">Pouco Urgente</option>
                   </select>
                 </div>
                 <div className="field" style={{ width: 150 }}>
@@ -2314,133 +2483,365 @@ export default function App() {
             </div>
           )}
 
-          <div className="panel" style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+          {/* BARRA DE BUSCA E ATALHO DIRETO PARA AS LINHAS DO PRINT */}
+          <div className="panel" style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 14 }}>
             <input
               className="input-dark"
-              style={{ flex: 1, minWidth: 260 }}
-              placeholder="Buscar por plano, o que será feito, quem ou como..."
+              style={{ flex: 1, minWidth: 240 }}
+              placeholder="Buscar em Plano de Ação, What, Why, Por quem, Onde..."
               value={busca5w}
               onChange={e => setBusca5w(e.target.value)}
             />
-            <select
-              className="select-dark"
-              value={filtro5wOrigem}
-              onChange={e => setFiltro5wOrigem(e.target.value)}
-            >
-              <option value="ALL">Todas as Planilhas</option>
-              <option value="FINANCEIRO">Planilha Financeiro (Karine)</option>
-              <option value="SUPORTE">Planilha Suporte (Vinicius)</option>
-            </select>
             <select
               className="select-dark"
               value={filtro5wStatus}
               onChange={e => setFiltro5wStatus(e.target.value)}
             >
               <option value="ALL">Todos os Status</option>
-              <option value="Concluído">Concluído / Realizado</option>
+              <option value="Atrasado">Atrasados (ex.: Dupla Entrada, Raiz, 3DS)</option>
               <option value="Em andamento">Em andamento</option>
-              <option value="Atrasado">Atrasado</option>
+              <option value="Concluído">Concluído / Realizado</option>
               <option value="Não iniciado">Não iniciado / Não Realizado</option>
             </select>
-            <label style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "#f87171", fontWeight: 600, cursor: "pointer" }}>
-              <input
-                type="checkbox"
-                checked={apenasNaoResolvidos}
-                onChange={e => setApenasNaoResolvidos(e.target.checked)}
-              />
-              Apenas &ldquo;NÃO RESOLVIDO&rdquo; (Aba 2H)
-            </label>
+            <button
+              type="button"
+              className="btn-secondary"
+              style={{ borderColor: "#ea580c", color: "#fb923c" }}
+              onClick={() => {
+                setFiltro5wAba("5W");
+                setFiltro5wOrigem("FINANCEIRO");
+                setFiltro5wStatus("ALL");
+                setBusca5w("");
+                const el = document.getElementById("row-5w-FINANCEIRO-36");
+                if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+              }}
+            >
+              📌 Ir para Linhas 36–43 (Aba contabilidade, Raiz bancária, Ativo/Passivo, 3DS)
+            </button>
           </div>
 
-          <div className="panel-no-pad">
-            <table className="fin-table">
-              <thead>
-                <tr>
-                  <th>Planilha / Aba / Linha</th>
-                  <th>Plano / Tarefa Técnica (Coluna C)</th>
-                  <th>Quem / Área</th>
-                  <th>{filtro5wAba === "EXE" ? "Tarefas Programadas x Realizadas (Aba EXE)" : "Como / Etapa QA (Coluna D)"}</th>
-                  <th>Prazo / Custo</th>
-                  <th>Status (ERP ⇄ Planilha)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {planosFiltrados.map(p => {
-                  const prog = Number(p.tarefas_programadas || 0);
-                  const real = Number(p.tarefas_realizadas || 0);
-                  const pctExe = prog > 0 ? Math.round((real / prog) * 100) : p.status === "Concluído" ? 100 : 0;
-                  return (
-                    <tr key={p.id}>
-                      <td>
-                        <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
-                          <span className="tag tag-slate">{p.origem_planilha}</span>
-                          <span className={`tag ${p.aba_origem === "2H" ? "tag-amber" : "tag-emerald"}`}>
-                            Aba {p.aba_origem || "5W"}
-                          </span>
-                        </div>
-                        <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 3 }}>
-                          Linha {p.linha_planilha || "—"}
-                        </div>
-                        {p.nao_resolvido && (
-                          <div style={{ marginTop: 4 }}>
-                            <span
-                              className="tag tag-red"
-                              style={{ cursor: "pointer" }}
-                              title="Clique para marcar como Resolvido no ERP e na Planilha"
-                              onClick={async () => {
-                                const res = await fetch(`/api/plano-acao/${p.id}`, {
+          {/* =================================================================
+              TABELA ABA 5W — IDÊNTICA À CAPTURA DE TELA DO EXCEL (CABEÇALHO DUPLO)
+             ================================================================= */}
+          {filtro5wAba === "5W" && (
+            <div className="panel-no-pad" style={{ overflowX: "auto" }}>
+              <table className="fin-table" style={{ minWidth: 1220, borderCollapse: "collapse" }}>
+                <thead>
+                  {/* Linha 1 do Cabeçalho Agrupado (What, Why, Who, When, Where) */}
+                  <tr style={{ background: "#334155" }}>
+                    <th rowSpan={2} style={{ borderRight: "1px solid #475569", width: 64, textAlign: "center", color: "#e2e8f0" }}>
+                      Linha
+                    </th>
+                    <th rowSpan={2} style={{ borderRight: "1px solid #475569", minWidth: 270, color: "#ffffff", fontSize: 12.5 }}>
+                      Plano de Ação
+                    </th>
+                    <th rowSpan={2} style={{ borderRight: "1px solid #475569", width: 138, textAlign: "center", color: "#ffffff", fontSize: 12.5 }}>
+                      Priorização
+                    </th>
+                    <th style={{ borderRight: "1px solid #475569", borderBottom: "1px solid #475569", color: "#e2e8f0", minWidth: 190 }}>
+                      What
+                    </th>
+                    <th style={{ borderRight: "1px solid #475569", borderBottom: "1px solid #475569", color: "#e2e8f0", minWidth: 150 }}>
+                      Why
+                    </th>
+                    <th colSpan={2} style={{ borderRight: "1px solid #475569", borderBottom: "1px solid #475569", color: "#e2e8f0", textAlign: "center" }}>
+                      Who
+                    </th>
+                    <th colSpan={4} style={{ borderRight: "1px solid #475569", borderBottom: "1px solid #475569", color: "#e2e8f0", textAlign: "center" }}>
+                      When
+                    </th>
+                    <th style={{ borderRight: "1px solid #475569", borderBottom: "1px solid #475569", color: "#e2e8f0", width: 110 }}>
+                      Where
+                    </th>
+                    <th rowSpan={2} style={{ width: 145, textAlign: "center", color: "#ffffff" }}>
+                      Status
+                    </th>
+                  </tr>
+                  {/* Linha 2 do Cabeçalho Agrupado */}
+                  <tr style={{ background: "#475569" }}>
+                    <th style={{ borderRight: "1px solid #64748b", color: "#f8fafc", fontSize: 11.5 }}>O que será feito</th>
+                    <th style={{ borderRight: "1px solid #64748b", color: "#f8fafc", fontSize: 11.5 }}>Justificativa</th>
+                    <th style={{ borderRight: "1px solid #64748b", color: "#f8fafc", fontSize: 11.5, width: 135 }}>Por quem</th>
+                    <th style={{ borderRight: "1px solid #64748b", color: "#f8fafc", fontSize: 11.5, width: 95 }}>Área</th>
+                    <th style={{ borderRight: "1px solid #64748b", color: "#f8fafc", fontSize: 11.5, width: 92, textAlign: "center" }}>Início</th>
+                    <th style={{ borderRight: "1px solid #64748b", color: "#f8fafc", fontSize: 11.5, width: 65, textAlign: "center" }}>Prazo (dias)</th>
+                    <th style={{ borderRight: "1px solid #64748b", color: "#f8fafc", fontSize: 11.5, width: 95, textAlign: "center" }}>Fim Planejado</th>
+                    <th style={{ borderRight: "1px solid #64748b", color: "#f8fafc", fontSize: 11.5, width: 90, textAlign: "center" }}>Fim Real</th>
+                    <th style={{ borderRight: "1px solid #64748b", color: "#f8fafc", fontSize: 11.5 }}>Onde</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {planosFiltrados.map(p => {
+                    const prio = p.prioridade || "Muito Urgente";
+                    const prioBg =
+                      prio === "Muito Urgente"
+                        ? "#dc2626"
+                        : prio === "Urgente"
+                        ? "#ea580c"
+                        : prio === "Normal"
+                        ? "#16a34a"
+                        : "#2563eb";
+                    const formatBrDate = (iso: string | null) => {
+                      if (!iso) return "";
+                      const parts = String(iso).slice(0, 10).split("-");
+                      return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : iso;
+                    };
+
+                    return (
+                      <tr
+                        key={p.id}
+                        id={`row-5w-${p.origem_planilha}-${p.linha_planilha}`}
+                        style={{ borderBottom: "1px solid #1e382d" }}
+                      >
+                        {/* Linha da Planilha */}
+                        <td style={{ textAlign: "center", fontSize: 11.5, color: "#94a3b8", borderRight: "1px solid #162a21" }}>
+                          <div style={{ fontWeight: 700, color: "#cbd5e1" }}>#{p.linha_planilha}</div>
+                          <div style={{ fontSize: 10 }}>{p.origem_planilha === "FINANCEIRO" ? "FIN" : "SUP"}</div>
+                        </td>
+
+                        {/* Coluna C: Plano de Ação */}
+                        <td style={{ fontWeight: 600, color: "#f8fafc", borderRight: "1px solid #162a21" }}>
+                          {p.plano}
+                        </td>
+
+                        {/* Coluna D: Priorização (Exatamente com as cores Laranja/Vermelho da planilha) */}
+                        <td style={{ padding: 4, borderRight: "1px solid #162a21", textAlign: "center" }}>
+                          <select
+                            value={prio}
+                            style={{
+                              background: prioBg,
+                              color: "#ffffff",
+                              fontWeight: 700,
+                              fontSize: 12,
+                              border: "none",
+                              borderRadius: 4,
+                              padding: "6px 8px",
+                              width: "100%",
+                              cursor: "pointer",
+                              textAlign: "center"
+                            }}
+                            onChange={async e => {
+                              const novaPrio = e.target.value;
+                              const res = await fetch(`/api/plano-acao/${p.id}`, {
+                                method: "PUT",
+                                headers: apiHeaders(),
+                                body: JSON.stringify({ prioridade: novaPrio })
+                              });
+                              const data = await res.json();
+                              const synced = data.excelSync?.syncedFiles?.length
+                                ? ` (${data.excelSync.syncedFiles[0]} linha ${p.linha_planilha})`
+                                : "";
+                              showNotification(`Priorização atualizada para "${novaPrio}"${synced}`);
+                              fetchAll(dashOrigemFilter);
+                            }}
+                          >
+                            <option value="Muito Urgente">Muito Urgente</option>
+                            <option value="Urgente">Urgente</option>
+                            <option value="Normal">Normal</option>
+                            <option value="Pouco Urgente">Pouco Urgente</option>
+                          </select>
+                        </td>
+
+                        {/* Coluna E: What (O que será feito) — editável */}
+                        <td style={{ borderRight: "1px solid #162a21", padding: "4px 8px" }}>
+                          <input
+                            className="input-dark"
+                            style={{ width: "100%", background: "transparent", border: "1px solid transparent", padding: "4px 6px", fontSize: 12 }}
+                            defaultValue={p.what || ""}
+                            placeholder="—"
+                            onBlur={async e => {
+                              if (e.target.value !== (p.what || "")) {
+                                await fetch(`/api/plano-acao/${p.id}`, {
                                   method: "PUT",
                                   headers: apiHeaders(),
-                                  body: JSON.stringify({ nao_resolvido: false })
+                                  body: JSON.stringify({ what: e.target.value })
                                 });
-                                const data = await res.json();
-                                const synced = data.excelSync?.syncedFiles?.length
-                                  ? ` e gravado em ${data.excelSync.syncedFiles[0]}`
-                                  : "";
-                                showNotification(`Item #${p.id} marcado como Resolvido no ERP${synced}!`);
+                                showNotification(`Coluna What (Linha ${p.linha_planilha}) salva no ERP e Excel!`);
                                 fetchAll(dashOrigemFilter);
-                              }}
-                            >
-                              NÃO RESOLVIDO ✕
-                            </span>
-                          </div>
-                        )}
-                      </td>
-                      <td style={{ maxWidth: 360 }}>
-                        <div style={{ fontWeight: 700 }}>{p.plano}</div>
-                        {p.what && p.what !== p.plano && (
-                          <div style={{ fontSize: 12, color: "#94a3b8" }}>{p.what}</div>
-                        )}
-                      </td>
-                      <td>
-                        <div style={{ fontWeight: 600 }}>{p.who_nome || "—"}</div>
-                        <span className="tag tag-slate">{p.area_nome || "DISK"}</span>
-                      </td>
-                      <td>
-                        {filtro5wAba === "EXE" || (p.aba_origem === "5W" && prog > 0) ? (
-                          <div>
-                            <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>
-                              {real} realizadas de {prog} programadas ({pctExe}%)
-                            </div>
-                            <div className="progress-bar-dark" style={{ height: 7, margin: 0 }}>
-                              <div className="progress-fill-dark" style={{ width: `${pctExe}%` }} />
-                            </div>
-                          </div>
-                        ) : (
-                          <span
-                            className={`tag ${
-                              p.etapa_teste === "TESTE OK"
-                                ? "tag-emerald"
-                                : p.etapa_teste === "TESTAR DISK"
-                                ? "tag-amber"
-                                : "tag-slate"
-                            }`}
+                              }
+                            }}
+                          />
+                        </td>
+
+                        {/* Coluna F: Why (Justificativa) — editável */}
+                        <td style={{ borderRight: "1px solid #162a21", padding: "4px 8px" }}>
+                          <input
+                            className="input-dark"
+                            style={{ width: "100%", background: "transparent", border: "1px solid transparent", padding: "4px 6px", fontSize: 12 }}
+                            defaultValue={p.why || ""}
+                            placeholder="—"
+                            onBlur={async e => {
+                              if (e.target.value !== (p.why || "")) {
+                                await fetch(`/api/plano-acao/${p.id}`, {
+                                  method: "PUT",
+                                  headers: apiHeaders(),
+                                  body: JSON.stringify({ why: e.target.value })
+                                });
+                                showNotification(`Coluna Why (Linha ${p.linha_planilha}) salva no ERP e Excel!`);
+                                fetchAll(dashOrigemFilter);
+                              }
+                            }}
+                          />
+                        </td>
+
+                        {/* Coluna G: Who (Por quem) */}
+                        <td style={{ borderRight: "1px solid #162a21", fontSize: 12, fontWeight: 600 }}>
+                          {p.who_nome || "—"}
+                        </td>
+
+                        {/* Coluna H: Área */}
+                        <td style={{ borderRight: "1px solid #162a21", fontSize: 12 }}>
+                          {p.area_nome || "—"}
+                        </td>
+
+                        {/* Coluna I: Início */}
+                        <td style={{ borderRight: "1px solid #162a21", textAlign: "center", fontSize: 12, whiteSpace: "nowrap" }}>
+                          {formatBrDate(p.inicio)}
+                        </td>
+
+                        {/* Coluna J: Prazo (dias) */}
+                        <td style={{ borderRight: "1px solid #162a21", textAlign: "center", fontSize: 12 }}>
+                          {p.prazo_dias ?? 30}
+                        </td>
+
+                        {/* Coluna K: Fim Planejado */}
+                        <td style={{ borderRight: "1px solid #162a21", textAlign: "center", fontSize: 12, whiteSpace: "nowrap" }}>
+                          {formatBrDate(p.fim_planejado)}
+                        </td>
+
+                        {/* Coluna L: Fim Real */}
+                        <td style={{ borderRight: "1px solid #162a21", textAlign: "center", fontSize: 12, whiteSpace: "nowrap", color: "#34d399" }}>
+                          {formatBrDate(p.fim_real)}
+                        </td>
+
+                        {/* Coluna M: Where (Onde) — editável */}
+                        <td style={{ borderRight: "1px solid #162a21", padding: "4px 8px" }}>
+                          <input
+                            className="input-dark"
+                            style={{ width: "100%", background: "transparent", border: "1px solid transparent", padding: "4px 6px", fontSize: 12 }}
+                            defaultValue={p.onde || ""}
+                            placeholder="—"
+                            onBlur={async e => {
+                              if (e.target.value !== (p.onde || "")) {
+                                await fetch(`/api/plano-acao/${p.id}`, {
+                                  method: "PUT",
+                                  headers: apiHeaders(),
+                                  body: JSON.stringify({ onde: e.target.value })
+                                });
+                                showNotification(`Coluna Where/Onde (Linha ${p.linha_planilha}) salva no ERP e Excel!`);
+                                fetchAll(dashOrigemFilter);
+                              }
+                            }}
+                          />
+                        </td>
+
+                        {/* Coluna P: Status (ERP ⇄ Planilha) */}
+                        <td style={{ padding: 4 }}>
+                          <select
+                            className="select-dark"
+                            style={{ padding: "5px 8px", fontSize: 12, width: "100%" }}
+                            value={p.status}
+                            onChange={async e => {
+                              const novoStatus = e.target.value;
+                              const res = await fetch(`/api/plano-acao/${p.id}`, {
+                                method: "PUT",
+                                headers: apiHeaders(),
+                                body: JSON.stringify({ status: novoStatus })
+                              });
+                              const data = await res.json();
+                              const syncedMsg = data.excelSync?.syncedFiles?.length
+                                ? ` + gravado em ${data.excelSync.syncedFiles[0]} (linha ${p.linha_planilha})`
+                                : "";
+                              showNotification(`Linha #${p.linha_planilha} → ${novoStatus}${syncedMsg}`);
+                              fetchAll(dashOrigemFilter);
+                            }}
                           >
-                            {p.how || p.onde || "—"}
+                            <option value="Concluído">Concluído</option>
+                            <option value="Em andamento">Em andamento</option>
+                            <option value="Atrasado">Atrasado</option>
+                            <option value="Não iniciado">Não iniciado</option>
+                          </select>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* =================================================================
+              TABELA ABA 2H — ESTRUTURA FIEL À ABA 2H DAS PLANILHAS (HOW / HOW MUCH / STATUS)
+             ================================================================= */}
+          {(filtro5wAba === "2H" || filtro5wAba === "ALL") && (
+            <div className="panel-no-pad" style={{ overflowX: "auto" }}>
+              <table className="fin-table">
+                <thead>
+                  <tr style={{ background: "#334155" }}>
+                    <th style={{ width: 80, textAlign: "center" }}>Linha</th>
+                    <th>Plano de Ação / Tarefa Técnica (Coluna C)</th>
+                    <th>How — Como será feito / Etapa QA (Coluna D)</th>
+                    <th>How Much / Trava (Coluna E)</th>
+                    <th>Status (Coluna G — ERP ⇄ Planilha)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {planosFiltrados.map(p => (
+                    <tr key={p.id}>
+                      <td style={{ textAlign: "center", fontSize: 11.5, color: "#94a3b8" }}>
+                        <div style={{ fontWeight: 700, color: "#cbd5e1" }}>#{p.linha_planilha}</div>
+                        <div style={{ fontSize: 10 }}>{p.origem_planilha} • {p.aba_origem}</div>
+                      </td>
+                      <td style={{ fontWeight: 600 }}>{p.plano}</td>
+                      <td>
+                        <select
+                          className="select-dark"
+                          style={{ padding: "4px 8px", fontSize: 12 }}
+                          value={p.how || p.etapa_teste || "TESTAR DISK"}
+                          onChange={async e => {
+                            const novoHow = e.target.value;
+                            await fetch(`/api/plano-acao/${p.id}`, {
+                              method: "PUT",
+                              headers: apiHeaders(),
+                              body: JSON.stringify({
+                                how: novoHow,
+                                etapa_teste: novoHow === "TESTE OK" ? "TESTE OK" : novoHow === "TESTAR DISK" ? "TESTAR DISK" : "GUILHERME",
+                                status: novoHow === "TESTE OK" ? "Concluído" : p.status
+                              })
+                            });
+                            showNotification(`Coluna How (Linha ${p.linha_planilha}) → ${novoHow}!`);
+                            fetchAll(dashOrigemFilter);
+                          }}
+                        >
+                          <option value="TESTE OK">TESTE OK</option>
+                          <option value="TESTAR DISK">TESTAR DISK</option>
+                          <option value="Guilherme">Guilherme</option>
+                          {p.how && !["TESTE OK", "TESTAR DISK", "Guilherme"].includes(p.how) && (
+                            <option value={p.how}>{p.how}</option>
+                          )}
+                        </select>
+                      </td>
+                      <td>
+                        {p.nao_resolvido ? (
+                          <span
+                            className="tag tag-red"
+                            style={{ cursor: "pointer" }}
+                            onClick={async () => {
+                              await fetch(`/api/plano-acao/${p.id}`, {
+                                method: "PUT",
+                                headers: apiHeaders(),
+                                body: JSON.stringify({ nao_resolvido: false })
+                              });
+                              showNotification(`Linha #${p.linha_planilha} destravada!`);
+                              fetchAll(dashOrigemFilter);
+                            }}
+                          >
+                            NÃO RESOLVIDO ✕
                           </span>
+                        ) : (
+                          <span>{formatBRL(p.how_much_centavos || 0)}</span>
                         )}
                       </td>
-                      <td style={{ fontSize: 12 }}>{p.fim_planejado || "—"}</td>
                       <td>
                         <select
                           className="select-dark"
@@ -2448,36 +2849,77 @@ export default function App() {
                           value={p.status}
                           onChange={async e => {
                             const novoStatus = e.target.value;
-                            const res = await fetch(`/api/plano-acao/${p.id}`, {
+                            await fetch(`/api/plano-acao/${p.id}`, {
                               method: "PUT",
                               headers: apiHeaders(),
-                              body: JSON.stringify({
-                                status: novoStatus,
-                                nao_resolvido: novoStatus === "Concluído" ? false : p.nao_resolvido
-                              })
+                              body: JSON.stringify({ status: novoStatus })
                             });
-                            const data = await res.json();
-                            const syncedMsg = data.excelSync?.syncedFiles?.length
-                              ? ` + Planilha Excel atualizada (${data.excelSync.syncedFiles[0]} linha ${p.linha_planilha})`
-                              : data.excelSync?.lockedFiles?.length
-                              ? ` (Salvo no ERP; feche a planilha no Excel para gravar no arquivo)`
-                              : "";
-                            showNotification(`Plano #${p.id} → ${novoStatus}${syncedMsg}`);
+                            showNotification(`Linha #${p.linha_planilha} → ${novoStatus}!`);
                             fetchAll(dashOrigemFilter);
                           }}
                         >
-                          <option value="Concluído">Concluído / Realizado</option>
+                          <option value="Concluído">Realizado / Concluído</option>
+                          <option value="Não iniciado">Não Realizado</option>
                           <option value="Em andamento">Em andamento</option>
                           <option value="Atrasado">Atrasado</option>
-                          <option value="Não iniciado">Não iniciado / Não Realizado</option>
                         </select>
                       </td>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* =================================================================
+              TABELA ABA EXE — ACOMPANHAMENTO DE EXECUÇÃO (TAREFAS PROGRAMADAS X REALIZADAS)
+             ================================================================= */}
+          {filtro5wAba === "EXE" && (
+            <div className="panel-no-pad">
+              <table className="fin-table">
+                <thead>
+                  <tr style={{ background: "#334155" }}>
+                    <th style={{ width: 80, textAlign: "center" }}>Linha</th>
+                    <th>Planos de Ação (Coluna C da Aba EXE)</th>
+                    <th style={{ textAlign: "center" }}>Tarefas Programadas (Coluna D)</th>
+                    <th style={{ textAlign: "center" }}>Tarefas Realizadas (Coluna E)</th>
+                    <th>Tarefas Concluídas (%) (Coluna F)</th>
+                    <th>Status (Coluna G)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {planosFiltrados.map(p => {
+                    const prog = Number(p.tarefas_programadas || 1);
+                    const real = Number(p.tarefas_realizadas || 0);
+                    const pct = prog > 0 ? Math.round((real / prog) * 100) : 0;
+                    return (
+                      <tr key={p.id}>
+                        <td style={{ textAlign: "center", fontSize: 12, color: "#94a3b8" }}>
+                          #{p.linha_planilha} ({p.origem_planilha === "FINANCEIRO" ? "FIN" : "SUP"})
+                        </td>
+                        <td style={{ fontWeight: 700 }}>{p.plano}</td>
+                        <td style={{ textAlign: "center", fontWeight: 700 }}>{prog}</td>
+                        <td style={{ textAlign: "center", fontWeight: 700, color: "#34d399" }}>{real}</td>
+                        <td style={{ minWidth: 180 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <div className="progress-bar-dark" style={{ flex: 1, height: 8, margin: 0 }}>
+                              <div className="progress-fill-dark" style={{ width: `${pct}%` }} />
+                            </div>
+                            <span style={{ fontSize: 12, fontWeight: 700 }}>{pct}%</span>
+                          </div>
+                        </td>
+                        <td>
+                          <span className={`tag ${p.status === "Concluído" ? "tag-emerald" : p.status === "Atrasado" ? "tag-red" : "tag-amber"}`}>
+                            {p.status}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </main>
       )}
 
