@@ -2217,217 +2217,74 @@ export default function App() {
          ===================================================================== */}
       {activeModule === "plano5w2h" && (
         <main className="page-container-wide">
-          {/* BARRA LARANJA E AZUL IDÊNTICA AO TOPO DA PLANILHA */}
+          {/* CABEÇALHO NO PADRÃO ESCURO / ESMERALDA DO ERP */}
           <div
             style={{
-              borderRadius: 10,
-              overflow: "hidden",
-              border: "1px solid #1e382d",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-end",
+              gap: 16,
+              flexWrap: "wrap",
               marginBottom: 16
             }}
           >
-            {/* Faixa Superior Laranja (Estilo DiskIngressos Planilha) */}
-            <div
-              style={{
-                background: "#ea580c",
-                padding: "10px 18px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                flexWrap: "wrap",
-                gap: 12
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap" }}>
-                <span style={{ fontWeight: 900, fontSize: 18, color: "#1e3a8a", fontStyle: "italic" }}>
-                  DiskIngressos
-                </span>
-                <button
-                  onClick={() => setActiveModule("cadastros")}
-                  style={{
-                    background: "transparent",
-                    border: "none",
-                    color: "#fff",
-                    fontWeight: 700,
-                    fontSize: 12.5,
-                    cursor: "pointer"
-                  }}
-                >
-                  CADASTRO
-                </button>
-                <span
-                  style={{
-                    background: "#5b9bd5",
-                    color: "#fff",
-                    fontWeight: 800,
-                    fontSize: 12.5,
-                    padding: "6px 14px",
-                    borderRadius: 4
-                  }}
-                >
-                  PLANOS DE AÇÃO
-                </span>
-                <button
-                  onClick={() => setFiltro5wAba("EXE")}
-                  style={{
-                    background: filtro5wAba === "EXE" ? "#5b9bd5" : "transparent",
-                    border: "none",
-                    color: "#fff",
-                    fontWeight: 700,
-                    fontSize: 12.5,
-                    padding: "6px 12px",
-                    borderRadius: 4,
-                    cursor: "pointer"
-                  }}
-                >
-                  ACOMPANHAMENTO DE EXECUÇÃO
-                </button>
-                <button
-                  onClick={() => setActiveModule("dashboard")}
-                  style={{
-                    background: "transparent",
-                    border: "none",
-                    color: "#fff",
-                    fontWeight: 700,
-                    fontSize: 12.5,
-                    cursor: "pointer"
-                  }}
-                >
-                  DASHBOARD
-                </button>
-              </div>
-
-              <div style={{ display: "flex", gap: 8 }}>
-                <button
-                  className="btn-secondary"
-                  style={{ background: "#0f221b", color: "#ecfdf5", borderColor: "#0f221b" }}
-                  onClick={handleManualSyncPlanilhas}
-                  disabled={isSyncing}
-                >
-                  <RefreshCw size={14} /> Puxar das Planilhas
-                </button>
-                <button
-                  className="btn-emerald"
-                  style={{ background: "#065f46", color: "#fff" }}
-                  onClick={() => setShowNew5wModal(!showNew5wModal)}
-                >
-                  <Plus size={14} /> Nova Linha 5W2H
-                </button>
-              </div>
+            <div>
+              <h1 className="page-title" style={{ fontSize: 22 }}>
+                Planos de Ação 5W2H & Acompanhamento de Execução
+              </h1>
+              <p className="page-subtitle" style={{ marginBottom: 0 }}>
+                Estrutura oficial das planilhas (Abas 5W, 2H e EXE) sincronizada em mão dupla com o Excel.
+              </p>
             </div>
 
-            {/* Faixa Azul com as Abas "5 W" e "2 H" idênticas à captura de tela */}
-            <div
-              style={{
-                background: "#5b9bd5",
-                padding: "8px 18px 0 18px",
-                display: "flex",
-                alignItems: "flex-end",
-                justifyContent: "space-between",
-                flexWrap: "wrap",
-                gap: 12
-              }}
-            >
-              <div style={{ display: "flex", gap: 6 }}>
-                <button
-                  onClick={() => setFiltro5wAba("5W")}
-                  style={{
-                    background: filtro5wAba === "5W" ? "#ffffff" : "rgba(255,255,255,0.18)",
-                    color: filtro5wAba === "5W" ? "#0f172a" : "#ffffff",
-                    border: "none",
-                    padding: "8px 28px",
-                    fontWeight: 800,
-                    fontSize: 13.5,
-                    borderTopLeftRadius: 6,
-                    borderTopRightRadius: 6,
-                    cursor: "pointer"
-                  }}
-                >
-                  5 W ({planos.filter(p => p.aba_origem === "5W" && (filtro5wOrigem === "ALL" || String(p.origem_planilha).startsWith(filtro5wOrigem))).length})
-                </button>
-                <button
-                  onClick={() => setFiltro5wAba("2H")}
-                  style={{
-                    background: filtro5wAba === "2H" ? "#ffffff" : "rgba(255,255,255,0.18)",
-                    color: filtro5wAba === "2H" ? "#0f172a" : "#ffffff",
-                    border: "none",
-                    padding: "8px 28px",
-                    fontWeight: 800,
-                    fontSize: 13.5,
-                    borderTopLeftRadius: 6,
-                    borderTopRightRadius: 6,
-                    cursor: "pointer"
-                  }}
-                >
-                  2 H ({planos.filter(p => p.aba_origem === "2H" && (filtro5wOrigem === "ALL" || String(p.origem_planilha).startsWith(filtro5wOrigem))).length})
-                </button>
-                <button
-                  onClick={() => setFiltro5wAba("EXE")}
-                  style={{
-                    background: filtro5wAba === "EXE" ? "#ffffff" : "rgba(255,255,255,0.18)",
-                    color: filtro5wAba === "EXE" ? "#0f172a" : "#ffffff",
-                    border: "none",
-                    padding: "8px 22px",
-                    fontWeight: 800,
-                    fontSize: 13,
-                    borderTopLeftRadius: 6,
-                    borderTopRightRadius: 6,
-                    cursor: "pointer"
-                  }}
-                >
-                  ACOMPANHAMENTO DE EXECUÇÃO — EXE ({planos.filter(p => p.aba_origem === "EXE" && (filtro5wOrigem === "ALL" || String(p.origem_planilha).startsWith(filtro5wOrigem))).length})
-                </button>
-              </div>
-
-              {/* Seletor rápido da Planilha (Financeiro Karine vs Suporte Vinicius) */}
-              <div style={{ display: "flex", gap: 6, paddingBottom: 6, flexWrap: "wrap" }}>
-                <button
-                  onClick={() => setFiltro5wOrigem("FINANCEIRO")}
-                  style={{
-                    background: filtro5wOrigem === "FINANCEIRO" ? "#0f172a" : "rgba(15,23,42,0.35)",
-                    color: "#fff",
-                    border: "1px solid rgba(255,255,255,0.3)",
-                    borderRadius: 5,
-                    padding: "4px 12px",
-                    fontSize: 12,
-                    fontWeight: 700,
-                    cursor: "pointer"
-                  }}
-                >
-                  Planilha Financeiro (Karine)
-                </button>
-                <button
-                  onClick={() => setFiltro5wOrigem("SUPORTE")}
-                  style={{
-                    background: filtro5wOrigem === "SUPORTE" ? "#0f172a" : "rgba(15,23,42,0.35)",
-                    color: "#fff",
-                    border: "1px solid rgba(255,255,255,0.3)",
-                    borderRadius: 5,
-                    padding: "4px 12px",
-                    fontSize: 12,
-                    fontWeight: 700,
-                    cursor: "pointer"
-                  }}
-                >
-                  Planilha Suporte (Vinicius)
-                </button>
-                <button
-                  onClick={() => setFiltro5wOrigem("ALL")}
-                  style={{
-                    background: filtro5wOrigem === "ALL" ? "#0f172a" : "rgba(15,23,42,0.35)",
-                    color: "#fff",
-                    border: "1px solid rgba(255,255,255,0.3)",
-                    borderRadius: 5,
-                    padding: "4px 12px",
-                    fontSize: 12,
-                    fontWeight: 700,
-                    cursor: "pointer"
-                  }}
-                >
-                  Ambas as Planilhas
-                </button>
-              </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button
+                className={filtro5wOrigem === "FINANCEIRO" ? "btn-emerald" : "btn-secondary"}
+                onClick={() => setFiltro5wOrigem("FINANCEIRO")}
+              >
+                Planilha Financeiro (Karine)
+              </button>
+              <button
+                className={filtro5wOrigem === "SUPORTE" ? "btn-emerald" : "btn-secondary"}
+                onClick={() => setFiltro5wOrigem("SUPORTE")}
+              >
+                Planilha Suporte (Vinicius)
+              </button>
+              <button
+                className={filtro5wOrigem === "ALL" ? "btn-emerald" : "btn-secondary"}
+                onClick={() => setFiltro5wOrigem("ALL")}
+              >
+                Ambas as Planilhas
+              </button>
+              <button className="btn-secondary" onClick={handleManualSyncPlanilhas} disabled={isSyncing}>
+                <RefreshCw size={14} /> Puxar das Planilhas
+              </button>
+              <button className="btn-emerald" onClick={() => setShowNew5wModal(!showNew5wModal)}>
+                <Plus size={14} /> Nova Linha 5W2H
+              </button>
             </div>
+          </div>
+
+          {/* SUB-ABAS NO PADRÃO DO ERP (.subtabs-bar / .subtab-btn) */}
+          <div className="subtabs-bar" style={{ marginBottom: 16 }}>
+            <button
+              className={`subtab-btn ${filtro5wAba === "5W" ? "active" : ""}`}
+              onClick={() => setFiltro5wAba("5W")}
+            >
+              5 W ({planos.filter(p => p.aba_origem === "5W" && (filtro5wOrigem === "ALL" || String(p.origem_planilha).startsWith(filtro5wOrigem))).length})
+            </button>
+            <button
+              className={`subtab-btn ${filtro5wAba === "2H" ? "active" : ""}`}
+              onClick={() => setFiltro5wAba("2H")}
+            >
+              2 H ({planos.filter(p => p.aba_origem === "2H" && (filtro5wOrigem === "ALL" || String(p.origem_planilha).startsWith(filtro5wOrigem))).length})
+            </button>
+            <button
+              className={`subtab-btn ${filtro5wAba === "EXE" ? "active" : ""}`}
+              onClick={() => setFiltro5wAba("EXE")}
+            >
+              ACOMPANHAMENTO DE EXECUÇÃO — EXE ({planos.filter(p => p.aba_origem === "EXE" && (filtro5wOrigem === "ALL" || String(p.origem_planilha).startsWith(filtro5wOrigem))).length})
+            </button>
           </div>
 
           {showNew5wModal && (
@@ -2506,7 +2363,7 @@ export default function App() {
             <button
               type="button"
               className="btn-secondary"
-              style={{ borderColor: "#ea580c", color: "#fb923c" }}
+              style={{ borderColor: "#10b981", color: "#34d399" }}
               onClick={() => {
                 setFiltro5wAba("5W");
                 setFiltro5wOrigem("FINANCEIRO");
@@ -2521,53 +2378,53 @@ export default function App() {
           </div>
 
           {/* =================================================================
-              TABELA ABA 5W — IDÊNTICA À CAPTURA DE TELA DO EXCEL (CABEÇALHO DUPLO)
+              TABELA ABA 5W — NO PADRÃO DE CORES DO ERP (CABEÇALHO DUPLO)
              ================================================================= */}
           {filtro5wAba === "5W" && (
             <div className="panel-no-pad" style={{ overflowX: "auto" }}>
               <table className="fin-table" style={{ minWidth: 1220, borderCollapse: "collapse" }}>
                 <thead>
                   {/* Linha 1 do Cabeçalho Agrupado (What, Why, Who, When, Where) */}
-                  <tr style={{ background: "#334155" }}>
-                    <th rowSpan={2} style={{ borderRight: "1px solid #475569", width: 64, textAlign: "center", color: "#e2e8f0" }}>
+                  <tr style={{ background: "#0d1d17" }}>
+                    <th rowSpan={2} style={{ borderRight: "1px solid #1e382d", width: 64, textAlign: "center", color: "#94a3b8" }}>
                       Linha
                     </th>
-                    <th rowSpan={2} style={{ borderRight: "1px solid #475569", minWidth: 270, color: "#ffffff", fontSize: 12.5 }}>
+                    <th rowSpan={2} style={{ borderRight: "1px solid #1e382d", minWidth: 270, color: "#ecfdf5", fontSize: 12.5 }}>
                       Plano de Ação
                     </th>
-                    <th rowSpan={2} style={{ borderRight: "1px solid #475569", width: 138, textAlign: "center", color: "#ffffff", fontSize: 12.5 }}>
+                    <th rowSpan={2} style={{ borderRight: "1px solid #1e382d", width: 138, textAlign: "center", color: "#ecfdf5", fontSize: 12.5 }}>
                       Priorização
                     </th>
-                    <th style={{ borderRight: "1px solid #475569", borderBottom: "1px solid #475569", color: "#e2e8f0", minWidth: 190 }}>
+                    <th style={{ borderRight: "1px solid #1e382d", borderBottom: "1px solid #1e382d", color: "#34d399", minWidth: 190 }}>
                       What
                     </th>
-                    <th style={{ borderRight: "1px solid #475569", borderBottom: "1px solid #475569", color: "#e2e8f0", minWidth: 150 }}>
+                    <th style={{ borderRight: "1px solid #1e382d", borderBottom: "1px solid #1e382d", color: "#34d399", minWidth: 150 }}>
                       Why
                     </th>
-                    <th colSpan={2} style={{ borderRight: "1px solid #475569", borderBottom: "1px solid #475569", color: "#e2e8f0", textAlign: "center" }}>
+                    <th colSpan={2} style={{ borderRight: "1px solid #1e382d", borderBottom: "1px solid #1e382d", color: "#34d399", textAlign: "center" }}>
                       Who
                     </th>
-                    <th colSpan={4} style={{ borderRight: "1px solid #475569", borderBottom: "1px solid #475569", color: "#e2e8f0", textAlign: "center" }}>
+                    <th colSpan={4} style={{ borderRight: "1px solid #1e382d", borderBottom: "1px solid #1e382d", color: "#34d399", textAlign: "center" }}>
                       When
                     </th>
-                    <th style={{ borderRight: "1px solid #475569", borderBottom: "1px solid #475569", color: "#e2e8f0", width: 110 }}>
+                    <th style={{ borderRight: "1px solid #1e382d", borderBottom: "1px solid #1e382d", color: "#34d399", width: 110 }}>
                       Where
                     </th>
-                    <th rowSpan={2} style={{ width: 145, textAlign: "center", color: "#ffffff" }}>
+                    <th rowSpan={2} style={{ width: 145, textAlign: "center", color: "#ecfdf5" }}>
                       Status
                     </th>
                   </tr>
                   {/* Linha 2 do Cabeçalho Agrupado */}
-                  <tr style={{ background: "#475569" }}>
-                    <th style={{ borderRight: "1px solid #64748b", color: "#f8fafc", fontSize: 11.5 }}>O que será feito</th>
-                    <th style={{ borderRight: "1px solid #64748b", color: "#f8fafc", fontSize: 11.5 }}>Justificativa</th>
-                    <th style={{ borderRight: "1px solid #64748b", color: "#f8fafc", fontSize: 11.5, width: 135 }}>Por quem</th>
-                    <th style={{ borderRight: "1px solid #64748b", color: "#f8fafc", fontSize: 11.5, width: 95 }}>Área</th>
-                    <th style={{ borderRight: "1px solid #64748b", color: "#f8fafc", fontSize: 11.5, width: 92, textAlign: "center" }}>Início</th>
-                    <th style={{ borderRight: "1px solid #64748b", color: "#f8fafc", fontSize: 11.5, width: 65, textAlign: "center" }}>Prazo (dias)</th>
-                    <th style={{ borderRight: "1px solid #64748b", color: "#f8fafc", fontSize: 11.5, width: 95, textAlign: "center" }}>Fim Planejado</th>
-                    <th style={{ borderRight: "1px solid #64748b", color: "#f8fafc", fontSize: 11.5, width: 90, textAlign: "center" }}>Fim Real</th>
-                    <th style={{ borderRight: "1px solid #64748b", color: "#f8fafc", fontSize: 11.5 }}>Onde</th>
+                  <tr style={{ background: "#13261e" }}>
+                    <th style={{ borderRight: "1px solid #1e382d", color: "#cbd5e1", fontSize: 11.5 }}>O que será feito</th>
+                    <th style={{ borderRight: "1px solid #1e382d", color: "#cbd5e1", fontSize: 11.5 }}>Justificativa</th>
+                    <th style={{ borderRight: "1px solid #1e382d", color: "#cbd5e1", fontSize: 11.5, width: 135 }}>Por quem</th>
+                    <th style={{ borderRight: "1px solid #1e382d", color: "#cbd5e1", fontSize: 11.5, width: 95 }}>Área</th>
+                    <th style={{ borderRight: "1px solid #1e382d", color: "#cbd5e1", fontSize: 11.5, width: 92, textAlign: "center" }}>Início</th>
+                    <th style={{ borderRight: "1px solid #1e382d", color: "#cbd5e1", fontSize: 11.5, width: 65, textAlign: "center" }}>Prazo (dias)</th>
+                    <th style={{ borderRight: "1px solid #1e382d", color: "#cbd5e1", fontSize: 11.5, width: 95, textAlign: "center" }}>Fim Planejado</th>
+                    <th style={{ borderRight: "1px solid #1e382d", color: "#cbd5e1", fontSize: 11.5, width: 90, textAlign: "center" }}>Fim Real</th>
+                    <th style={{ borderRight: "1px solid #1e382d", color: "#cbd5e1", fontSize: 11.5 }}>Onde</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -2778,32 +2635,32 @@ export default function App() {
               <table className="fin-table" style={{ minWidth: 1050, borderCollapse: "collapse" }}>
                 <thead>
                   {/* Linha 1 do Cabeçalho Agrupado da Aba 2H */}
-                  <tr style={{ background: "#334155" }}>
-                    <th rowSpan={2} style={{ borderRight: "1px solid #475569", width: 70, textAlign: "center", color: "#e2e8f0" }}>
+                  <tr style={{ background: "#0d1d17" }}>
+                    <th rowSpan={2} style={{ borderRight: "1px solid #1e382d", width: 70, textAlign: "center", color: "#94a3b8" }}>
                       Linha
                     </th>
-                    <th rowSpan={2} style={{ borderRight: "1px solid #475569", minWidth: 340, color: "#ffffff", fontSize: 12.5 }}>
+                    <th rowSpan={2} style={{ borderRight: "1px solid #1e382d", minWidth: 340, color: "#ecfdf5", fontSize: 12.5 }}>
                       Plano de Ação
                     </th>
-                    <th style={{ borderRight: "1px solid #475569", borderBottom: "1px solid #475569", color: "#e2e8f0", minWidth: 240 }}>
+                    <th style={{ borderRight: "1px solid #1e382d", borderBottom: "1px solid #1e382d", color: "#34d399", minWidth: 240 }}>
                       How
                     </th>
-                    <th style={{ borderRight: "1px solid #475569", borderBottom: "1px solid #475569", color: "#e2e8f0", width: 170, textAlign: "center" }}>
+                    <th style={{ borderRight: "1px solid #1e382d", borderBottom: "1px solid #1e382d", color: "#34d399", width: 170, textAlign: "center" }}>
                       How much
                     </th>
-                    <th rowSpan={2} style={{ borderRight: "1px solid #475569", width: 170, textAlign: "center", color: "#ffffff", fontSize: 12 }}>
+                    <th rowSpan={2} style={{ borderRight: "1px solid #1e382d", width: 170, textAlign: "center", color: "#ecfdf5", fontSize: 12 }}>
                       Data máxima para conclusão
                     </th>
-                    <th rowSpan={2} style={{ width: 155, textAlign: "center", color: "#ffffff", fontSize: 12.5 }}>
+                    <th rowSpan={2} style={{ width: 155, textAlign: "center", color: "#ecfdf5", fontSize: 12.5 }}>
                       Status
                     </th>
                   </tr>
                   {/* Linha 2 do Cabeçalho Agrupado da Aba 2H */}
-                  <tr style={{ background: "#475569" }}>
-                    <th style={{ borderRight: "1px solid #64748b", color: "#f8fafc", fontSize: 11.5 }}>
+                  <tr style={{ background: "#13261e" }}>
+                    <th style={{ borderRight: "1px solid #1e382d", color: "#cbd5e1", fontSize: 11.5 }}>
                       Como será feito
                     </th>
-                    <th style={{ borderRight: "1px solid #64748b", color: "#f8fafc", fontSize: 11.5, textAlign: "center" }}>
+                    <th style={{ borderRight: "1px solid #1e382d", color: "#cbd5e1", fontSize: 11.5, textAlign: "center" }}>
                       Quanto custa
                     </th>
                   </tr>
@@ -2983,23 +2840,23 @@ export default function App() {
             <div className="panel-no-pad" style={{ overflowX: "auto" }}>
               <table className="fin-table" style={{ minWidth: 980, borderCollapse: "collapse" }}>
                 <thead>
-                  <tr style={{ background: "#334155" }}>
-                    <th style={{ borderRight: "1px solid #475569", width: 70, textAlign: "center", color: "#e2e8f0" }}>
+                  <tr style={{ background: "#0d1d17" }}>
+                    <th style={{ borderRight: "1px solid #1e382d", width: 70, textAlign: "center", color: "#94a3b8" }}>
                       Linha
                     </th>
-                    <th style={{ borderRight: "1px solid #475569", minWidth: 360, color: "#ffffff", fontSize: 12.5 }}>
+                    <th style={{ borderRight: "1px solid #1e382d", minWidth: 360, color: "#ecfdf5", fontSize: 12.5 }}>
                       Planos de Ação
                     </th>
-                    <th style={{ borderRight: "1px solid #475569", width: 170, textAlign: "center", color: "#ffffff", fontSize: 12 }}>
+                    <th style={{ borderRight: "1px solid #1e382d", width: 170, textAlign: "center", color: "#34d399", fontSize: 12 }}>
                       Quantidade de Tarefas Programadas
                     </th>
-                    <th style={{ borderRight: "1px solid #475569", width: 170, textAlign: "center", color: "#ffffff", fontSize: 12 }}>
+                    <th style={{ borderRight: "1px solid #1e382d", width: 170, textAlign: "center", color: "#34d399", fontSize: 12 }}>
                       Quantidade de Tarefas Realizadas
                     </th>
-                    <th style={{ borderRight: "1px solid #475569", width: 180, textAlign: "center", color: "#ffffff", fontSize: 12 }}>
+                    <th style={{ borderRight: "1px solid #1e382d", width: 180, textAlign: "center", color: "#34d399", fontSize: 12 }}>
                       % de Conclusão do Plano de Ação
                     </th>
-                    <th style={{ width: 150, textAlign: "center", color: "#ffffff", fontSize: 12.5 }}>
+                    <th style={{ width: 150, textAlign: "center", color: "#ecfdf5", fontSize: 12.5 }}>
                       Status
                     </th>
                   </tr>
