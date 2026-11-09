@@ -17,7 +17,9 @@ import {
   BarChart3,
   Activity,
   Info,
-  ArrowRight
+  ArrowRight,
+  RefreshCw,
+  Plus
 } from "lucide-react";
 
 type Perfil = "admin" | "financeiro" | "suporte" | "leitura";
@@ -233,6 +235,17 @@ export default function App() {
   const [buscaSolicitacao, setBuscaSolicitacao] = useState("");
   const [filtroModuloSol, setFiltroModuloSol] = useState("ALL");
 
+  // Bidirectional Sync & New 5W2H Task State
+  const [lastSyncIso, setLastSyncIso] = useState<string>("");
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [showNew5wModal, setShowNew5wModal] = useState(false);
+  const [novo5wPlano, setNovo5wPlano] = useState("");
+  const [novo5wWhat, setNovo5wWhat] = useState("");
+  const [novo5wHow, setNovo5wHow] = useState("");
+  const [novo5wPrioridade, setNovo5wPrioridade] = useState("Muito Urgente");
+  const [novo5wOrigem, setNovo5wOrigem] = useState("FINANCEIRO");
+  const [novo5wStatus, setNovo5wStatus] = useState("Em andamento");
+
   function showNotification(msg: string) {
     setToast(msg);
     setTimeout(() => setToast(null), 4000);
@@ -293,6 +306,82 @@ export default function App() {
   useEffect(() => {
     fetchAll(dashOrigemFilter);
   }, [currentUser.perfil, token, dashOrigemFilter]);
+
+  // Poll /api/sync/status every 4s to auto-refresh UI when Excel spreadsheets are saved externally
+  useEffect(() => {
+    let currentStamp = lastSyncIso;
+    const timer = setInterval(async () => {
+      try {
+        const res = await fetch("/api/sync/status");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.lastSyncTimestamp && currentStamp && data.lastSyncTimestamp !== currentStamp) {
+          currentStamp = data.lastSyncTimestamp;
+          setLastSyncIso(data.lastSyncTimestamp);
+          await fetchAll(dashOrigemFilter);
+        } else if (data.lastSyncTimestamp && !currentStamp) {
+          currentStamp = data.lastSyncTimestamp;
+          setLastSyncIso(data.lastSyncTimestamp);
+        }
+      } catch {
+        // ignore network hiccups
+      }
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [dashOrigemFilter, lastSyncIso]);
+
+  async function handleManualSyncPlanilhas() {
+    setIsSyncing(true);
+    try {
+      const res = await fetch("/api/sync/planilhas", {
+        method: "POST",
+        headers: apiHeaders()
+      });
+      const data = await res.json();
+      if (res.ok && data.report) {
+        if (data.syncState?.lastSyncTimestamp) {
+          setLastSyncIso(data.syncState.lastSyncTimestamp);
+        }
+        await fetchAll(dashOrigemFilter);
+        showNotification(
+          `Sincronizado! Planilhas lidas: ${data.report.planosAtualizados} itens conferidos/atualizados, ${data.report.planosImportados} novos.`
+        );
+      }
+    } finally {
+      setIsSyncing(false);
+    }
+  }
+
+  async function handleCriarNovoPlano5W2H(e: React.FormEvent) {
+    e.preventDefault();
+    if (!novo5wPlano.trim()) return;
+    const res = await fetch("/api/plano-acao", {
+      method: "POST",
+      headers: apiHeaders(),
+      body: JSON.stringify({
+        plano: novo5wPlano.trim(),
+        prioridade: novo5wPrioridade,
+        what: novo5wWhat.trim() || novo5wPlano.trim(),
+        why: "Ação registrada via ERP",
+        how: novo5wHow.trim() || "Equipe Disk",
+        onde: "DISK",
+        prazo_dias: 15,
+        status: novo5wStatus,
+        origem_planilha: novo5wOrigem
+      })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || "Erro ao criar ação 5W2H");
+      return;
+    }
+    setNovo5wPlano("");
+    setNovo5wWhat("");
+    setNovo5wHow("");
+    setShowNew5wModal(false);
+    showNotification(`Nova ação 5W2H criada no ERP e gravada na planilha (${novo5wOrigem})!`);
+    fetchAll(dashOrigemFilter);
+  }
 
   const contasAnaliticas = useMemo(() => {
     return contas.filter(c => c.aceita_lancamento);
@@ -575,6 +664,15 @@ export default function App() {
         </nav>
 
         <div className="auth-controls">
+          <button
+            className="btn-secondary"
+            onClick={handleManualSyncPlanilhas}
+            disabled={isSyncing}
+            title="Lê imediatamente qualquer alteração salva nas planilhas Excel e atualiza o ERP"
+            style={{ borderColor: "#10b981", color: "#34d399" }}
+          >
+            <RefreshCw size={14} /> {isSyncing ? "Sincronizando..." : "Planilha ⇄ ERP"}
+          </button>
           <div className="profile-pill" title="Alternar Perfil de Acesso (T4 RBAC)">
             <UserCheck size={14} color="#10b981" />
             <span style={{ color: "#94a3b8" }}>{currentUser.nome.split(" ")[0]}:</span>
@@ -1716,14 +1814,78 @@ export default function App() {
       )}
 
       {/* =====================================================================
-          MODULE 3: PLANO DE AÇÃO 5W2H (TAREFA T3 & T5)
+          MODULE 3: PLANO DE AÇÃO 5W2H (TAREFA T3 & T5 — SINCRONIZAÇÃO BIDIRECIONAL)
          ===================================================================== */}
       {activeModule === "plano5w2h" && (
         <main className="page-container">
-          <h1 className="page-title">Plano de Ação 5W2H Unificado (Financeiro & Suporte)</h1>
-          <p className="page-subtitle">
-            {planos.length} itens importados das abas 5W e 2H com normalização automática de status.
-          </p>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+            <div>
+              <h1 className="page-title">Plano de Ação 5W2H Unificado (Financeiro & Suporte)</h1>
+              <p className="page-subtitle" style={{ marginBottom: 0 }}>
+                {planos.length} itens sincronizados em mão dupla (Planilhas Excel ⇄ ERP PostgreSQL).
+              </p>
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button className="btn-secondary" onClick={handleManualSyncPlanilhas} disabled={isSyncing}>
+                <RefreshCw size={14} /> Puxar das Planilhas
+              </button>
+              <button className="btn-emerald" onClick={() => setShowNew5wModal(!showNew5wModal)}>
+                <Plus size={14} /> Nova Ação 5W2H
+              </button>
+            </div>
+          </div>
+
+          {showNew5wModal && (
+            <div className="panel" style={{ borderColor: "#10b981" }}>
+              <div className="panel-title">Adicionar Nova Ação 5W2H (Salva no ERP e na Planilha)</div>
+              <form className="form-row" onSubmit={handleCriarNovoPlano5W2H}>
+                <div className="field" style={{ width: 170 }}>
+                  <label>Planilha Destino</label>
+                  <select className="select-dark" value={novo5wOrigem} onChange={e => setNovo5wOrigem(e.target.value)}>
+                    <option value="FINANCEIRO">Financeiro (Karine)</option>
+                    <option value="SUPORTE">Suporte (Vinicius)</option>
+                  </select>
+                </div>
+                <div className="field" style={{ flex: 1, minWidth: 220 }}>
+                  <label>Plano / Título (Coluna C)</label>
+                  <input
+                    className="input-dark"
+                    placeholder="Ex: Parametrizar taxa por bandeira..."
+                    value={novo5wPlano}
+                    onChange={e => setNovo5wPlano(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="field" style={{ flex: 1, minWidth: 200 }}>
+                  <label>Como / Responsável Técnico (Aba 2H)</label>
+                  <input
+                    className="input-dark"
+                    placeholder="Ex: Guilherme / Equipe Disk"
+                    value={novo5wHow}
+                    onChange={e => setNovo5wHow(e.target.value)}
+                  />
+                </div>
+                <div className="field" style={{ width: 150 }}>
+                  <label>Prioridade</label>
+                  <select className="select-dark" value={novo5wPrioridade} onChange={e => setNovo5wPrioridade(e.target.value)}>
+                    <option value="Muito Urgente">Muito Urgente</option>
+                    <option value="Urgente">Urgente</option>
+                    <option value="Normal">Normal</option>
+                  </select>
+                </div>
+                <div className="field" style={{ width: 150 }}>
+                  <label>Status Inicial</label>
+                  <select className="select-dark" value={novo5wStatus} onChange={e => setNovo5wStatus(e.target.value)}>
+                    <option value="Em andamento">Em andamento</option>
+                    <option value="Não iniciado">Não iniciado</option>
+                    <option value="Concluído">Concluído</option>
+                    <option value="Atrasado">Atrasado</option>
+                  </select>
+                </div>
+                <button type="submit" className="btn-emerald">Salvar no ERP & Excel</button>
+              </form>
+            </div>
+          )}
 
           <div className="panel" style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
             <input
@@ -1772,7 +1934,7 @@ export default function App() {
                   <th>Quem / Área</th>
                   <th>Como (2H)</th>
                   <th>Prazo</th>
-                  <th>Status</th>
+                  <th>Status (ERP ⇄ Planilha)</th>
                 </tr>
               </thead>
               <tbody>
@@ -1782,7 +1944,26 @@ export default function App() {
                       <span className="tag tag-slate">{p.origem_planilha}</span>
                       {p.nao_resolvido && (
                         <div style={{ marginTop: 4 }}>
-                          <span className="tag tag-red">NÃO RESOLVIDO</span>
+                          <span
+                            className="tag tag-red"
+                            style={{ cursor: "pointer" }}
+                            title="Clique para marcar como Resolvido no ERP e na Planilha"
+                            onClick={async () => {
+                              const res = await fetch(`/api/plano-acao/${p.id}`, {
+                                method: "PUT",
+                                headers: apiHeaders(),
+                                body: JSON.stringify({ nao_resolvido: false })
+                              });
+                              const data = await res.json();
+                              const synced = data.excelSync?.syncedFiles?.length
+                                ? ` e gravado em ${data.excelSync.syncedFiles[0]}`
+                                : "";
+                              showNotification(`Item #${p.id} marcado como Resolvido no ERP${synced}!`);
+                              fetchAll();
+                            }}
+                          >
+                            NÃO RESOLVIDO ✕
+                          </span>
                         </div>
                       )}
                     </td>
@@ -1805,7 +1986,7 @@ export default function App() {
                         value={p.status}
                         onChange={async e => {
                           const novoStatus = e.target.value;
-                          await fetch(`/api/plano-acao/${p.id}`, {
+                          const res = await fetch(`/api/plano-acao/${p.id}`, {
                             method: "PUT",
                             headers: apiHeaders(),
                             body: JSON.stringify({
@@ -1813,7 +1994,13 @@ export default function App() {
                               nao_resolvido: novoStatus === "Concluído" ? false : p.nao_resolvido
                             })
                           });
-                          showNotification(`Plano #${p.id} atualizado para ${novoStatus}`);
+                          const data = await res.json();
+                          const syncedMsg = data.excelSync?.syncedFiles?.length
+                            ? ` + Planilha Excel atualizada (${data.excelSync.syncedFiles[0]})`
+                            : data.excelSync?.lockedFiles?.length
+                            ? ` (Salvo no ERP; feche a planilha no Excel para gravar no arquivo)`
+                            : "";
+                          showNotification(`Plano #${p.id} → ${novoStatus}${syncedMsg}`);
                           fetchAll();
                         }}
                       >
@@ -1836,10 +2023,17 @@ export default function App() {
          ===================================================================== */}
       {activeModule === "solicitacoes" && (
         <main className="page-container">
-          <h1 className="page-title">Solicitações e Ajustes da Plataforma (Guilherme)</h1>
-          <p className="page-subtitle">
-            445 solicitações importadas de &ldquo;datas das solicitaçoes e ajustes.xlsx&rdquo; (Plan1 + Plan3).
-          </p>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+            <div>
+              <h1 className="page-title">Solicitações e Ajustes da Plataforma (Guilherme)</h1>
+              <p className="page-subtitle" style={{ marginBottom: 0 }}>
+                445 solicitações sincronizadas em mão dupla com &ldquo;datas das solicitaçoes e ajustes.xlsx&rdquo; (Plan1 + Plan3).
+              </p>
+            </div>
+            <button className="btn-secondary" onClick={handleManualSyncPlanilhas} disabled={isSyncing}>
+              <RefreshCw size={14} /> Puxar da Planilha
+            </button>
+          </div>
 
           <div className="panel" style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
             <input
@@ -1869,7 +2063,7 @@ export default function App() {
                   <th>Data</th>
                   <th>Descrição da Solicitação / Ajuste</th>
                   <th>Módulo</th>
-                  <th>Homologação</th>
+                  <th>Homologação (ERP ⇄ Excel)</th>
                 </tr>
               </thead>
               <tbody>
@@ -1889,11 +2083,18 @@ export default function App() {
                         className={s.concluido ? "btn-emerald" : "btn-secondary"}
                         style={{ padding: "4px 10px", fontSize: 12 }}
                         onClick={async () => {
-                          await fetch(`/api/solicitacoes/${s.id}`, {
+                          const res = await fetch(`/api/solicitacoes/${s.id}`, {
                             method: "PUT",
                             headers: apiHeaders(),
                             body: JSON.stringify({ concluido: !s.concluido })
                           });
+                          const data = await res.json();
+                          const syncedMsg = data.excelSync?.syncedFiles?.length
+                            ? ` + gravado em ${data.excelSync.syncedFiles[0]}`
+                            : "";
+                          showNotification(
+                            `Ajuste #${s.numero} marcado como ${!s.concluido ? "Testado ☑️" : "Pendente"}${syncedMsg}!`
+                          );
                           fetchAll();
                         }}
                       >

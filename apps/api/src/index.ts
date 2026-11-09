@@ -21,7 +21,13 @@ import {
   Perfil
 } from "@disk-erp/shared";
 import { getDb, runMigrations, recordAudit } from "./db/index.ts";
-import { importSpreadsheets } from "./modules/importer/service.ts";
+import {
+  importSpreadsheets,
+  syncPlanoAcaoToExcel,
+  syncSolicitacaoToExcel,
+  startSpreadsheetWatcher,
+  getSyncState
+} from "./modules/importer/service.ts";
 import {
   listContas,
   createConta,
@@ -544,12 +550,14 @@ export async function buildServer() {
       }
       const user = (req as any).currentUser;
       const db = await getDb();
+      const body = req.body as any;
       const d = parsed.data;
+      const origem = body.origem_planilha || "FINANCEIRO";
       const res = await db.query(
         `INSERT INTO plano_acao (
            plano, prioridade, what, why, who_id, area_id, onde,
            inicio, prazo_dias, fim_planejado, how, how_much_centavos, status, origem_planilha
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'MANUAL')
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
          RETURNING *`,
         [
           d.plano,
@@ -564,7 +572,8 @@ export async function buildServer() {
           d.fim_planejado || new Date().toISOString().slice(0, 10),
           d.how || "",
           d.how_much_centavos || 0,
-          d.status
+          d.status,
+          origem
         ]
       );
 
@@ -576,7 +585,8 @@ export async function buildServer() {
         depois: res.rows[0]
       });
 
-      return res.rows[0];
+      const excelSync = await syncPlanoAcaoToExcel(res.rows[0].id);
+      return { ...res.rows[0], excelSync };
     }
   );
 
@@ -590,17 +600,29 @@ export async function buildServer() {
       const beforeRes = await db.query("SELECT * FROM plano_acao WHERE id = $1", [id]);
       if (beforeRes.rows.length === 0) return reply.status(404).send({ error: "Item não encontrado" });
 
+      const prev = beforeRes.rows[0];
       const body = req.body as any;
-      const status = body.status ?? beforeRes.rows[0].status;
-      const observacao = body.observacao_resolucao ?? beforeRes.rows[0].observacao_resolucao;
-      const naoResolvido = body.nao_resolvido !== undefined ? Boolean(body.nao_resolvido) : beforeRes.rows[0].nao_resolvido;
-      const fimReal = status === "Concluído" ? new Date().toISOString().slice(0, 10) : beforeRes.rows[0].fim_real;
+      const plano = body.plano ?? prev.plano;
+      const prioridade = body.prioridade ?? prev.prioridade;
+      const what = body.what ?? prev.what;
+      const why = body.why ?? prev.why;
+      const whoId = body.who_id !== undefined ? body.who_id : prev.who_id;
+      const areaId = body.area_id !== undefined ? body.area_id : prev.area_id;
+      const onde = body.onde ?? prev.onde;
+      const how = body.how ?? prev.how;
+      const fimPlanejado = body.fim_planejado ?? prev.fim_planejado;
+      const status = body.status ?? prev.status;
+      const observacao = body.observacao_resolucao ?? prev.observacao_resolucao;
+      const naoResolvido = body.nao_resolvido !== undefined ? Boolean(body.nao_resolvido) : prev.nao_resolvido;
+      const fimReal = status === "Concluído" ? new Date().toISOString().slice(0, 10) : prev.fim_real;
 
       const afterRes = await db.query(
         `UPDATE plano_acao
-         SET status = $1, observacao_resolucao = $2, nao_resolvido = $3, fim_real = $4
-         WHERE id = $5 RETURNING *`,
-        [status, observacao, naoResolvido, fimReal, id]
+         SET plano = $1, prioridade = $2, what = $3, why = $4, who_id = $5, area_id = $6,
+             onde = $7, how = $8, fim_planejado = $9, status = $10, observacao_resolucao = $11,
+             nao_resolvido = $12, fim_real = $13
+         WHERE id = $14 RETURNING *`,
+        [plano, prioridade, what, why, whoId, areaId, onde, how, fimPlanejado, status, observacao, naoResolvido, fimReal, id]
       );
 
       await recordAudit({
@@ -608,11 +630,12 @@ export async function buildServer() {
         acao: "ATUALIZAR_PLANO_ACAO",
         entidade: "plano_acao",
         entidade_id: id,
-        antes: beforeRes.rows[0],
+        antes: prev,
         depois: afterRes.rows[0]
       });
 
-      return afterRes.rows[0];
+      const excelSync = await syncPlanoAcaoToExcel(id);
+      return { ...afterRes.rows[0], excelSync };
     }
   );
 
@@ -634,21 +657,29 @@ export async function buildServer() {
       const id = Number((req.params as any).id);
       const user = (req as any).currentUser;
       const db = await getDb();
-      const body = req.body as { concluido: boolean };
+      const body = req.body as { concluido?: boolean; descricao?: string };
+      const prevRes = await db.query("SELECT * FROM solicitacoes_plataforma WHERE id = $1", [id]);
+      if (prevRes.rows.length === 0) return reply.status(404).send({ error: "Solicitação não encontrada" });
+      const prev = prevRes.rows[0];
+      const concluido = body.concluido !== undefined ? Boolean(body.concluido) : prev.concluido;
+      const descricao = body.descricao ?? prev.descricao;
+
       const afterRes = await db.query(
-        "UPDATE solicitacoes_plataforma SET concluido = $1 WHERE id = $2 RETURNING *",
-        [Boolean(body.concluido), id]
+        "UPDATE solicitacoes_plataforma SET concluido = $1, descricao = $2 WHERE id = $3 RETURNING *",
+        [concluido, descricao, id]
       );
-      if (afterRes.rows.length === 0) return reply.status(404).send({ error: "Solicitação não encontrada" });
 
       await recordAudit({
         pessoa_id: user.id,
         acao: "ATUALIZAR_SOLICITACAO",
         entidade: "solicitacoes_plataforma",
         entidade_id: id,
+        antes: prev,
         depois: afterRes.rows[0]
       });
-      return afterRes.rows[0];
+
+      const excelSync = await syncSolicitacaoToExcel(id);
+      return { ...afterRes.rows[0], excelSync };
     }
   );
 
@@ -837,6 +868,15 @@ export async function buildServer() {
     return { ok: true, report };
   });
 
+  app.get("/api/sync/status", async () => {
+    return getSyncState();
+  });
+
+  app.post("/api/sync/planilhas", async () => {
+    const report = await importSpreadsheets();
+    return { ok: true, report, syncState: getSyncState() };
+  });
+
   // Serve Web build if present
   const webDist = path.join(rootDir, "apps", "web", "dist");
   if (fs.existsSync(webDist)) {
@@ -861,12 +901,13 @@ if (isMain) {
   (async () => {
     await runMigrations();
     const report = await importSpreadsheets();
+    startSpreadsheetWatcher();
     console.log("[Disk ERP] Migrações PostgreSQL 16 e Planilhas carregadas:", report);
     const app = await buildServer();
     const port = Number(process.env.API_PORT || 3001);
     await app.listen({ port, host: "0.0.0.0" });
     console.log(`\n=============================================================`);
-    console.log(`  Disk ERP (Fase 1 + Fase 2 PostgreSQL) rodando em:`);
+    console.log(`  Disk ERP (Sincronização Bidirecional Ativa) rodando em:`);
     console.log(`  http://localhost:${port}`);
     console.log(`=============================================================\n`);
   })();
