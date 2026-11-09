@@ -163,7 +163,7 @@ function DonutChartSVG({
 export default function App() {
   // Starts on "dashboard" as requested by the user!
   const [activeModule, setActiveModule] = useState<
-    "dashboard" | "financeiro" | "plano5w2h" | "solicitacoes" | "perguntas" | "cadastros" | "auditoria"
+    "dashboard" | "homologacao" | "plano5w2h" | "solicitacoes" | "perguntas" | "cadastros" | "auditoria" | "financeiro"
   >("dashboard");
 
   const [dashOrigemFilter, setDashOrigemFilter] = useState<"ALL" | "FINANCEIRO" | "SUPORTE">("ALL");
@@ -227,13 +227,27 @@ export default function App() {
   const [vendaCalculoPreview, setVendaCalculoPreview] = useState<any | null>(null);
   const [caixaValorStr, setCaixaValorStr] = useState("");
 
-  // Filters for 5W2H & Solicitações
+  // Filters for 5W2H, Homologação & Solicitações
   const [filtro5wOrigem, setFiltro5wOrigem] = useState("ALL");
+  const [filtro5wAba, setFiltro5wAba] = useState<"ALL" | "5W" | "2H" | "EXE">("ALL");
   const [filtro5wStatus, setFiltro5wStatus] = useState("ALL");
   const [apenasNaoResolvidos, setApenasNaoResolvidos] = useState(false);
   const [busca5w, setBusca5w] = useState("");
+
+  // Filters for Homologação & QA (Aba 2H)
+  const [filtroQaEtapa, setFiltroQaEtapa] = useState<"ALL" | "TESTAR DISK" | "GUILHERME" | "NAO_RESOLVIDO" | "TESTE OK">("TESTAR DISK");
+  const [filtroQaOrigem, setFiltroQaOrigem] = useState<"ALL" | "FINANCEIRO" | "SUPORTE">("ALL");
+  const [buscaQa, setBuscaQa] = useState("");
+
+  // Filters & Creation for Solicitações (Guilherme)
   const [buscaSolicitacao, setBuscaSolicitacao] = useState("");
   const [filtroModuloSol, setFiltroModuloSol] = useState("ALL");
+  const [filtroDataSol, setFiltroDataSol] = useState("ALL");
+  const [filtroStatusSol, setFiltroStatusSol] = useState<"ALL" | "PENDENTE" | "TESTADO" | "PLAN3">("ALL");
+  const [showNewSolModal, setShowNewSolModal] = useState(false);
+  const [novaSolDesc, setNovaSolDesc] = useState("");
+  const [novaSolModulo, setNovaSolModulo] = useState("Eventos & Pedidos");
+  const [novaSolSetor, setNovaSolSetor] = useState("SUPORTE");
 
   // Bidirectional Sync & New 5W2H Task State
   const [lastSyncIso, setLastSyncIso] = useState<string>("");
@@ -579,6 +593,9 @@ export default function App() {
   const planosFiltrados = useMemo(() => {
     return planos.filter(p => {
       if (filtro5wOrigem !== "ALL" && !String(p.origem_planilha).startsWith(filtro5wOrigem)) return false;
+      if (filtro5wAba === "5W" && p.aba_origem !== "5W") return false;
+      if (filtro5wAba === "2H" && p.aba_origem !== "2H") return false;
+      if (filtro5wAba === "EXE" && p.aba_origem !== "5W") return false;
       if (filtro5wStatus !== "ALL" && p.status !== filtro5wStatus) return false;
       if (apenasNaoResolvidos && !p.nao_resolvido) return false;
       if (busca5w) {
@@ -592,19 +609,79 @@ export default function App() {
       }
       return true;
     });
-  }, [planos, filtro5wOrigem, filtro5wStatus, apenasNaoResolvidos, busca5w]);
+  }, [planos, filtro5wOrigem, filtro5wAba, filtro5wStatus, apenasNaoResolvidos, busca5w]);
+
+  const itensHomologacao2H = useMemo(() => {
+    return planos.filter(p => {
+      if (p.aba_origem !== "2H") return false;
+      if (filtroQaOrigem !== "ALL" && !String(p.origem_planilha).startsWith(filtroQaOrigem)) return false;
+      if (filtroQaEtapa === "NAO_RESOLVIDO" && !p.nao_resolvido) return false;
+      if (filtroQaEtapa !== "ALL" && filtroQaEtapa !== "NAO_RESOLVIDO" && p.etapa_teste !== filtroQaEtapa) return false;
+      if (buscaQa) {
+        const q = buscaQa.toLowerCase();
+        const match =
+          (p.plano || "").toLowerCase().includes(q) ||
+          (p.how || "").toLowerCase().includes(q) ||
+          (p.who_nome || "").toLowerCase().includes(q);
+        if (!match) return false;
+      }
+      return true;
+    });
+  }, [planos, filtroQaOrigem, filtroQaEtapa, buscaQa]);
+
+  const contadoresQa = useMemo(() => {
+    const only2H = planos.filter(p => p.aba_origem === "2H");
+    return {
+      total2H: only2H.length,
+      testarDisk: only2H.filter(p => p.etapa_teste === "TESTAR DISK").length,
+      guilherme: only2H.filter(p => p.etapa_teste === "GUILHERME").length,
+      testeOk: only2H.filter(p => p.etapa_teste === "TESTE OK").length,
+      naoResolvido: only2H.filter(p => p.nao_resolvido).length
+    };
+  }, [planos]);
 
   const solicitacoesFiltradas = useMemo(() => {
     return solicitacoes.filter(s => {
       if (filtroModuloSol !== "ALL" && s.modulo !== filtroModuloSol) return false;
+      if (filtroDataSol !== "ALL" && s.data_solicitacao !== filtroDataSol) return false;
+      if (filtroStatusSol === "PENDENTE" && s.concluido) return false;
+      if (filtroStatusSol === "TESTADO" && !s.concluido) return false;
+      if (filtroStatusSol === "PLAN3" && !s.homologado_plan3) return false;
       if (buscaSolicitacao && !s.descricao.toLowerCase().includes(buscaSolicitacao.toLowerCase())) return false;
       return true;
     });
-  }, [solicitacoes, filtroModuloSol, buscaSolicitacao]);
+  }, [solicitacoes, filtroModuloSol, filtroDataSol, filtroStatusSol, buscaSolicitacao]);
 
   const modulosSolicitacao = useMemo(() => {
     return Array.from(new Set(solicitacoes.map(s => s.modulo))).sort();
   }, [solicitacoes]);
+
+  const datasSolicitacao = useMemo(() => {
+    return Array.from(new Set(solicitacoes.map(s => s.data_solicitacao))).sort().reverse();
+  }, [solicitacoes]);
+
+  async function handleCriarSolicitacao(e: React.FormEvent) {
+    e.preventDefault();
+    if (!novaSolDesc.trim()) return;
+    const res = await fetch("/api/solicitacoes", {
+      method: "POST",
+      headers: apiHeaders(),
+      body: JSON.stringify({
+        descricao: novaSolDesc.trim(),
+        modulo: novaSolModulo,
+        setor: novaSolSetor
+      })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || "Erro ao registrar solicitação");
+      return;
+    }
+    setNovaSolDesc("");
+    setShowNewSolModal(false);
+    showNotification(`Solicitação #${data.numero} registrada para o Guilherme!`);
+    fetchAll(dashOrigemFilter);
+  }
 
   return (
     <div>
@@ -614,7 +691,9 @@ export default function App() {
           <div className="brand-mark">DI</div>
           <div>
             <div style={{ fontWeight: 700, fontSize: 15, color: "#ecfdf5" }}>Disk Ingressos ERP</div>
-            <div style={{ fontSize: 11, color: "#94a3b8" }}>Gestão 5W2H, Razão Contábil & Compliance</div>
+            <div style={{ fontSize: 11, color: "#94a3b8" }}>
+              Controle de Ajustes de Sistemas, Homologação QA & Gestão 5W2H
+            </div>
           </div>
         </div>
 
@@ -626,10 +705,10 @@ export default function App() {
             <LayoutDashboard size={15} /> Dashboard Inicial
           </button>
           <button
-            className={`module-btn ${activeModule === "financeiro" ? "active" : ""}`}
-            onClick={() => setActiveModule("financeiro")}
+            className={`module-btn ${activeModule === "homologacao" ? "active" : ""}`}
+            onClick={() => setActiveModule("homologacao")}
           >
-            <Landmark size={15} /> Financeiro (Fase 2)
+            <CheckCircle2 size={15} /> Homologação & QA ({contadoresQa.testarDisk} Testar / {contadoresQa.testeOk} OK)
           </button>
           <button
             className={`module-btn ${activeModule === "plano5w2h" ? "active" : ""}`}
@@ -641,13 +720,13 @@ export default function App() {
             className={`module-btn ${activeModule === "solicitacoes" ? "active" : ""}`}
             onClick={() => setActiveModule("solicitacoes")}
           >
-            <Wrench size={15} /> Ajustes Plataforma ({solicitacoes.length})
+            <Wrench size={15} /> Solicitações Guilherme ({solicitacoes.length})
           </button>
           <button
             className={`module-btn ${activeModule === "perguntas" ? "active" : ""}`}
             onClick={() => setActiveModule("perguntas")}
           >
-            <HelpCircle size={15} /> Perguntas Abertas ({perguntas.length})
+            <HelpCircle size={15} /> Regras & Dúvidas 2H ({perguntas.length})
           </button>
           <button
             className={`module-btn ${activeModule === "cadastros" ? "active" : ""}`}
@@ -682,7 +761,7 @@ export default function App() {
             >
               <option value="financeiro">financeiro (Karine)</option>
               <option value="admin">admin (Diretoria)</option>
-              <option value="suporte">suporte (Vinicius - s/ banco)</option>
+              <option value="suporte">suporte (Vinicius)</option>
               <option value="leitura">leitura (SAC)</option>
             </select>
           </div>
@@ -717,7 +796,7 @@ export default function App() {
       )}
 
       {/* =====================================================================
-          MODULE 0 (DEFAULT): DASHBOARD INICIAL COMPLETO COM GRÁFICOS E DADOS EXPLICATIVOS AO LADO
+          MODULE 0 (DEFAULT): DASHBOARD INICIAL DE CONTROLE DE AJUSTES DE SISTEMAS
          ===================================================================== */}
       {activeModule === "dashboard" && dashboard && (
         <main className="page-container-wide">
@@ -734,10 +813,10 @@ export default function App() {
           >
             <div>
               <h1 className="page-title" style={{ fontSize: 24 }}>
-                Painel Executivo & Diagnóstico Operacional — Disk Ingressos
+                Painel de Controle de Ajustes de Sistemas & Homologação — Disk Ingressos
               </h1>
               <p className="page-subtitle" style={{ marginBottom: 0 }}>
-                Consolidação das Planilhas 5W2H (Financeiro e Suporte) e Homologação de Ajustes da Plataforma (Guilherme).
+                Sincronizado em mão dupla com as 3 Planilhas Oficiais: 5W2H Financeiro, 5W2H Suporte (Abas 5W, 2H, EXE, DASH) e Datas das Solicitações e Ajustes (Plan1, Plan2, Plan3).
               </p>
             </div>
 
@@ -746,51 +825,108 @@ export default function App() {
                 className={dashOrigemFilter === "ALL" ? "btn-emerald" : "btn-secondary"}
                 onClick={() => setDashOrigemFilter("ALL")}
               >
-                Consolidado (225 Itens 5W2H)
+                Consolidado ({dashboard.kpis.totalPlanos} Itens: 63 5W + 202 2H)
               </button>
               <button
                 className={dashOrigemFilter === "FINANCEIRO" ? "btn-emerald" : "btn-secondary"}
                 onClick={() => setDashOrigemFilter("FINANCEIRO")}
               >
-                Planilha Financeiro (Karine)
+                Planilha Financeiro (Karine — 38 5W + 34 2H)
               </button>
               <button
                 className={dashOrigemFilter === "SUPORTE" ? "btn-emerald" : "btn-secondary"}
                 onClick={() => setDashOrigemFilter("SUPORTE")}
               >
-                Planilha Suporte & Riscos (Vinicius)
+                Planilha Suporte (Vinicius — 25 5W + 168 2H)
               </button>
             </div>
           </div>
 
           {/* -----------------------------------------------------------------
-              6 STATUS CARDS EXECUTIVOS
+              4 STATUS CARDS CENTRAIS DE CONTROLE DE AJUSTE DE SISTEMAS
              ----------------------------------------------------------------- */}
           <div className="status-cards-grid">
-            {/* CARD 1 */}
+            {/* CARD 1: PLANOS MACRO ABA 5W */}
             <div className="status-card">
               <div className="status-card-top">
-                <span className="status-card-title">Execução Geral 5W2H</span>
+                <span className="status-card-title">Planos Macro (Aba 5W + DASH)</span>
                 <div className="status-card-icon" style={{ background: "rgba(16,185,129,0.16)", color: "#34d399" }}>
                   <ClipboardList size={17} />
                 </div>
               </div>
               <div className="status-card-value">
-                {dashboard.kpis.concluidos} / {dashboard.kpis.totalPlanos}
+                {dashboard.kpis.concluidos5W ?? dashboard.kpis.concluidos} / {dashboard.kpis.total5W ?? dashboard.kpis.totalPlanos}
               </div>
               <div className="progress-bar-dark">
-                <div className="progress-fill-dark" style={{ width: `${dashboard.kpis.pctConcluido}%` }} />
+                <div
+                  className="progress-fill-dark"
+                  style={{ width: `${dashboard.kpis.pct5W ?? dashboard.kpis.pctConcluido}%` }}
+                />
               </div>
               <div className="status-card-meta">
-                <span className="tag tag-emerald">{dashboard.kpis.pctConcluido}% Concluído</span>
-                <span>{dashboard.kpis.emAndamento} em andamento</span>
+                <span className="tag tag-emerald">{dashboard.kpis.pct5W ?? dashboard.kpis.pctConcluido}% Concluído (5W)</span>
+                <span>Suporte: 21/25 (84%) • Fin: 26/38 (68%)</span>
               </div>
             </div>
 
-            {/* CARD 2 */}
+            {/* CARD 2: HOMOLOGAÇÃO & QA ABA 2H */}
+            <div
+              className="status-card"
+              style={{ cursor: "pointer" }}
+              onClick={() => setActiveModule("homologacao")}
+            >
+              <div className="status-card-top">
+                <span className="status-card-title">Homologação & QA (Aba 2H — 202 Ajustes)</span>
+                <div className="status-card-icon" style={{ background: "rgba(59,130,246,0.18)", color: "#60a5fa" }}>
+                  <CheckCircle2 size={17} />
+                </div>
+              </div>
+              <div className="status-card-value">
+                {dashboard.kpis.testeOkCount ?? 97} TESTE OK
+              </div>
+              <div className="progress-bar-dark">
+                <div
+                  className="progress-fill-dark"
+                  style={{ width: `${dashboard.kpis.pct2H ?? 84}%`, background: "#3b82f6" }}
+                />
+              </div>
+              <div className="status-card-meta">
+                <span className="tag tag-amber">{dashboard.kpis.testarDiskCount ?? 44} TESTAR DISK</span>
+                <span className="tag tag-slate">{dashboard.kpis.guilherme2HCount ?? 35} c/ Guilherme</span>
+              </div>
+            </div>
+
+            {/* CARD 3: BACKLOG DE SOLICITAÇÕES GUILHERME (PLAN1 / PLAN2 / PLAN3) */}
+            <div
+              className="status-card"
+              style={{ cursor: "pointer" }}
+              onClick={() => setActiveModule("solicitacoes")}
+            >
+              <div className="status-card-top">
+                <span className="status-card-title">Solicitações Plataforma (Plan1 / Plan3)</span>
+                <div className="status-card-icon" style={{ background: "rgba(16,185,129,0.18)", color: "#34d399" }}>
+                  <Wrench size={17} />
+                </div>
+              </div>
+              <div className="status-card-value">
+                {dashboard.kpis.reqDone} / {dashboard.kpis.reqTotal}
+              </div>
+              <div className="progress-bar-dark">
+                <div
+                  className="progress-fill-dark"
+                  style={{ width: `${dashboard.kpis.pctReq}%`, background: "#10b981" }}
+                />
+              </div>
+              <div className="status-card-meta">
+                <span className="tag tag-emerald">{dashboard.kpis.pctReq}% Testados ☑️ (Plan3)</span>
+                <span>{dashboard.kpis.reqPending} pendentes de teste</span>
+              </div>
+            </div>
+
+            {/* CARD 4: BLOQUEIOS, ATRASADOS & NÃO RESOLVIDOS */}
             <div className="status-card">
               <div className="status-card-top">
-                <span className="status-card-title">Atrasados & Não Resolvidos</span>
+                <span className="status-card-title">Bloqueios & Não Resolvidos (5W + 2H)</span>
                 <div className="status-card-icon" style={{ background: "rgba(239,68,68,0.18)", color: "#f87171" }}>
                   <AlertTriangle size={17} />
                 </div>
@@ -809,99 +945,44 @@ export default function App() {
               </div>
               <div className="status-card-meta">
                 <span className="tag tag-red">{dashboard.kpis.atrasados} Atrasados (5W)</span>
-                <span className="tag tag-amber">{dashboard.kpis.naoResolvidos} Não Resolvidos (2H)</span>
-              </div>
-            </div>
-
-            {/* CARD 3 */}
-            <div className="status-card">
-              <div className="status-card-top">
-                <span className="status-card-title">Ajustes Plataforma (Guilherme)</span>
-                <div className="status-card-icon" style={{ background: "rgba(59,130,246,0.18)", color: "#60a5fa" }}>
-                  <Wrench size={17} />
-                </div>
-              </div>
-              <div className="status-card-value">
-                {dashboard.kpis.reqDone} / {dashboard.kpis.reqTotal}
-              </div>
-              <div className="progress-bar-dark">
-                <div
-                  className="progress-fill-dark"
-                  style={{ width: `${dashboard.kpis.pctReq}%`, background: "#3b82f6" }}
-                />
-              </div>
-              <div className="status-card-meta">
-                <span className="tag tag-slate">{dashboard.kpis.pctReq}% Testados ☑️</span>
-                <span>{dashboard.kpis.reqPending} na fila de testes</span>
-              </div>
-            </div>
-
-            {/* CARD 4 */}
-            <div className="status-card">
-              <div className="status-card-top">
-                <span className="status-card-title">Perguntas Abertas (Financeiro)</span>
-                <div className="status-card-icon" style={{ background: "rgba(245,158,11,0.18)", color: "#fbbf24" }}>
-                  <HelpCircle size={17} />
-                </div>
-              </div>
-              <div className="status-card-value" style={{ color: "#fbbf24" }}>
-                {dashboard.kpis.perguntasPendentes} pendentes
-              </div>
-              <div className="progress-bar-dark">
-                <div
-                  className="progress-fill-dark"
-                  style={{
-                    width: `${dashboard.kpis.totalPerguntas ? Math.round((dashboard.kpis.perguntasDecididas / dashboard.kpis.totalPerguntas) * 100) : 0}%`,
-                    background: "#f59e0b"
-                  }}
-                />
-              </div>
-              <div className="status-card-meta">
-                <span>De {dashboard.kpis.totalPerguntas} dúvidas da aba 2H</span>
-                <button
-                  className="btn-secondary"
-                  style={{ padding: "2px 8px", fontSize: 11 }}
-                  onClick={() => setActiveModule("perguntas")}
-                >
-                  Decidir
-                </button>
+                <span className="tag tag-amber">{dashboard.kpis.naoResolvidos} NÃO RESOLVIDO (2H)</span>
               </div>
             </div>
           </div>
 
           {/* =================================================================
-              ROW 1: GRÁFICO DE ROSCA STATUS 5W2H + COMPARATIVO POR PLANILHA (ESQUERDA)
-                     + DADOS EXPLICATIVOS (DIREITA)
+              ROW 1: FUNIL DE HOMOLOGAÇÃO DA ABA 2H (TESTE OK / TESTAR DISK / GUILHERME)
+                     + DADOS EXPLICATIVOS DE CONTROLE DE AJUSTES (DIREITA)
              ================================================================= */}
           <div className="chart-explainer-row">
             <div className="chart-card">
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
                 <div>
                   <div className="panel-title" style={{ marginBottom: 2, display: "flex", alignItems: "center", gap: 8 }}>
                     <PieChart size={17} color="#10b981" />
-                    1. Distribuição Geral de Status do Plano de Ação 5W2H
+                    1. Funil de Homologação de Ajustes (Aba 2H) & Execução 5W2H
                   </div>
                   <div style={{ fontSize: 12, color: "#94a3b8" }}>
-                    Proporção entre ações Concluídas, Em Andamento, Não Iniciadas (2H) e Atrasadas
+                    Estágio real de teste de cada tarefa técnica na coluna &ldquo;How&rdquo; da aba 2H (TESTE OK, TESTAR DISK, Guilherme e Não Resolvido)
                   </div>
                 </div>
-                <span className="tag tag-emerald">{dashboard.kpis.totalPlanos} itens analisados</span>
+                <span className="tag tag-emerald">{dashboard.kpis.total2H ?? 202} ajustes na aba 2H</span>
               </div>
 
               <DonutChartSVG
-                centerTop={`${dashboard.kpis.pctConcluido}%`}
-                centerBottom="Concluídos"
+                centerTop={`${dashboard.kpis.testeOkCount ?? 97}`}
+                centerBottom="TESTE OK (2H)"
                 segments={[
-                  { label: "Concluído / Realizado", value: dashboard.kpis.concluidos, color: "#10b981" },
-                  { label: "Em andamento", value: dashboard.kpis.emAndamento, color: "#3b82f6" },
-                  { label: "Não iniciado (Desdobramentos 2H)", value: dashboard.kpis.naoIniciados, color: "#f59e0b" },
-                  { label: "Atrasado (Crítico)", value: dashboard.kpis.atrasados, color: "#ef4444" }
+                  { label: "TESTE OK (Homologado pelo Suporte)", value: dashboard.kpis.testeOkCount ?? 97, color: "#10b981" },
+                  { label: "TESTAR DISK (Aguardando QA da equipe Disk)", value: dashboard.kpis.testarDiskCount ?? 44, color: "#f59e0b" },
+                  { label: "Com Guilherme (Em desenvolvimento / ajuste)", value: dashboard.kpis.guilherme2HCount ?? 35, color: "#3b82f6" },
+                  { label: "NÃO RESOLVIDO (Trava técnica / regra pendente)", value: dashboard.kpis.naoResolvidos ?? 7, color: "#ef4444" }
                 ]}
               />
 
               <div style={{ borderTop: "1px solid #162a21", paddingTop: 12 }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: "#cbd5e1", marginBottom: 10 }}>
-                  Comparativo Direto entre as Planilhas Originais (5W + 2H):
+                  Comparativo Direto entre as Planilhas Originais (Abas 5W + 2H):
                 </div>
                 {(dashboard.porOrigem || []).map((orig: any) => {
                   const pct = orig.total ? Math.round((orig.concluido / orig.total) * 100) : 0;
@@ -911,11 +992,17 @@ export default function App() {
                   return (
                     <div key={orig.origem} className="stacked-bar-row">
                       <div className="stacked-bar-header">
-                        <strong>{orig.origem}</strong>
+                        <strong>
+                          {orig.origem} ({orig.total5W ?? 0} planos 5W + {orig.total2H ?? 0} tarefas 2H)
+                        </strong>
                         <span style={{ color: "#94a3b8" }}>
                           {orig.concluido}/{orig.total} concluídos ({pct}%) •{" "}
-                          <span style={{ color: "#f87171", fontWeight: 600 }}>
-                            {orig.naoResolvido} não resolvidos
+                          <span style={{ color: "#34d399", fontWeight: 600 }}>
+                            {orig.testeOk ?? 0} TESTE OK
+                          </span>{" "}
+                          •{" "}
+                          <span style={{ color: "#fbbf24", fontWeight: 600 }}>
+                            {orig.testarDisk ?? 0} TESTAR DISK
                           </span>
                         </span>
                       </div>
@@ -934,35 +1021,38 @@ export default function App() {
             {/* EXPLICATIVO AO LADO DO GRÁFICO 1 */}
             <div className="explainer-card">
               <span className="explainer-badge">
-                <Info size={13} /> Dados Explicativos — Leitura Executiva 5W2H
+                <Info size={13} /> Dados Explicativos — Controle de Ajustes (5W, 2H e DASH)
               </span>
               <div className="explainer-title">
-                O que os dados das duas planilhas revelam sobre o momento do projeto?
+                Como funcionam os estágios de homologação nas planilhas de Suporte e Financeiro?
               </div>
               <ul className="explainer-list">
                 <li>
-                  <strong>Fase de Estruturação Concluída ({dashboard.kpis.pctConcluido}%):</strong> Nas duas planilhas, a etapa macro de planejamento, mapeamento de processos, política de gestão de riscos e o item <em>&ldquo;Implementar Sistema&rdquo;</em> já constam como <strong>Concluídos</strong>, confirmando que a plataforma de vendas já está em operação.
+                  <strong>97 Itens com &ldquo;TESTE OK&rdquo; (Aba 2H Suporte):</strong> Tarefas do sistema que já foram desenvolvidas pelo Guilherme, testadas pela equipe de Suporte (Vinicius) e validadas em produção (ex.: <em>Bloquear campo quantidade para assento numerado</em>, <em>Ordenar ingressos por pedido</em>, <em>Corrigir exibição de lotes</em>).
                 </li>
                 <li className="warn">
-                  <strong>Gargalo na Planilha Financeiro (Karine — 45 itens):</strong> Há <strong>11 planos em andamento</strong> e <strong>4 atrasados</strong> concentrados na camada contábil e de segurança: <em>Aba contabilidade – sistema de dupla entrada</em>, <em>Raiz da conta bancária</em>, <em>Ativo e passivo no plano de contas</em> e <em>Aba segurança (3DS 2.0 e Softdescriptor)</em>.
+                  <strong>44 Itens na Fila &ldquo;TESTAR DISK&rdquo; (41 Suporte + 3 Financeiro):</strong> Ajustes entregues que estão aguardando bateria de testes da equipe Disk antes de receberem o selo <code>TESTE OK</code> (ex.: <em>Relatório de Títulos</em>, <em>Cadastrar Cartões</em>, <em>Preview do Borderô</em>, <em>Curvatura das fileiras ao copiar setor</em>).
+                </li>
+                <li>
+                  <strong>35 Itens com &ldquo;Guilherme&rdquo; (18 Financeiro + 17 Suporte):</strong> Demandas técnicas na fila direta de desenvolvimento (ex.: <em>Dupla entrada</em>, <em>Raiz da conta bancária</em>, <em>3DS 2.0</em>, <em>Softdescriptor</em>, <em>Webview do aplicativo</em>).
                 </li>
                 <li className="danger">
-                  <strong>15 Itens Marcados como &ldquo;NÃO RESOLVIDO&rdquo; na Aba 2H:</strong> São decisões de negócio e travas técnicas entre a <strong>Disk (Karine / Vinicius)</strong> e o <strong>Guilherme</strong> — como a regra exata de <em>Dividir a taxa (80/20)</em>, cálculo de <em>SPREAD</em>, múltiplas bandeiras (<em>REDE / PAG</em>) e se pode ser liberado até 100% do valor no caixa da Disk.
+                  <strong>7 Itens Marcados como &ldquo;NÃO RESOLVIDO&rdquo; na Aba 2H Financeiro:</strong> Pendências críticas de regra ou código (ex.: <em>Dividir a taxa 80/20</em>, <em>SPREAD</em>, <em>REDE / PAG</em>, <em>Liberar até 100% do caixa</em>).
                 </li>
               </ul>
 
               <div className="explainer-kpi-strip">
                 <div className="explainer-mini-stat">
-                  <span>Planilha Financeiro</span>
-                  <strong>22 / 45 (49%)</strong>
+                  <span>DASH Suporte (5W / 2H)</span>
+                  <strong>84% (5W) • 88,1% (2H)</strong>
                 </div>
                 <div className="explainer-mini-stat">
-                  <span>Planilha Suporte</span>
-                  <strong>164 / 180 (91%)</strong>
+                  <span>DASH Financeiro (5W)</span>
+                  <strong>26 / 38 (68,4%)</strong>
                 </div>
                 <div className="explainer-mini-stat">
-                  <span>Pendências 2H</span>
-                  <strong style={{ color: "#f87171" }}>15 Não Resolvidos</strong>
+                  <span>Fila QA Imediata</span>
+                  <strong style={{ color: "#fbbf24" }}>{dashboard.kpis.testarDiskCount ?? 44} TESTAR DISK</strong>
                 </div>
               </div>
             </div>
@@ -1053,44 +1143,44 @@ export default function App() {
               </div>
               <ul className="explainer-list">
                 <li>
-                  <strong>Guilherme (Plataforma & Desenvolvimento):</strong> É o ponto focal técnico citado tanto na coluna <em>Onde</em> da aba <code>5W</code> quanto na coluna <em>How (Como será feito)</em> da aba <code>2H</code>. Concentra as entregas de código, regras de checkout, borderô e mapa de assentos.
+                  <strong>Guilherme (Desenvolvimento & Ajustes de Sistema):</strong> Ponto focal técnico nas abas <code>5W</code>, <code>2H</code> e na planilha de <code>445 solicitações</code>. Concentra as entregas de código, regras de checkout, borderô, reconhecimento facial e mapa de assentos.
                 </li>
                 <li>
-                  <strong>Vinicius Casagrande (Suporte & Operações):</strong> Conduz a implantação do sistema, controles internos de gestão de riscos e a bateria de homologação marcada nas planilhas como <code>TESTAR DISK</code> e <code>TESTE OK</code>. Possui 1 item atrasado na aba 5W: <em>&ldquo;Definição e adoção de ferramenta de Monitoramento&rdquo;</em>.
+                  <strong>Vinicius Casagrande (Suporte & Homologação QA):</strong> Lidera a implantação operacional e a homologação dos <code>168</code> ajustes da aba 2H de Suporte (dos quais <code>97</code> já estão com <code>TESTE OK</code> e <code>41</code> na fila <code>TESTAR DISK</code>).
                 </li>
                 <li className="warn">
-                  <strong>Karine Santos (Financeiro):</strong> Concentra todas as 38 ações da planilha Financeiro. Já concluiu 22 itens (políticas e manuais de risco/compliance), mas possui 16 itens abertos ligados à parametrização contábil, taxas por bandeira, split 80/20 e repasse a produtores.
+                  <strong>Karine Santos (Financeiro):</strong> Responsável pelos <code>38</code> planos macro da aba 5W e acompanhamento dos <code>34</code> desdobramentos técnicos da aba 2H do Financeiro (com <code>4</code> itens atrasados na camada contábil/segurança e <code>7</code> marcados como <code>NÃO RESOLVIDO</code>).
                 </li>
                 <li>
-                  <strong>Naila, Eder e Jackson (Diretoria):</strong> Já concluíram as aprovações formais da <em>Política de Gestão de Riscos</em>, <em>Metodologia de Riscos</em> e <em>Integração do Programa de Integridade</em>, atuando agora na alçada decisória sobre limites de antecipação de caixa.
+                  <strong>Naila, Eder e Jackson (Diretoria):</strong> Aprovaram as políticas de risco e integridade e definem as alçadas de liberação de caixa, repasses e taxas.
                 </li>
               </ul>
 
-              <div style={{ marginTop: "auto", display: "flex", gap: 10 }}>
+              <div style={{ marginTop: "auto", display: "flex", gap: 10, flexWrap: "wrap" }}>
                 <button
                   className="btn-emerald"
                   onClick={() => {
-                    setFiltro5wStatus("Atrasado");
-                    setActiveModule("plano5w2h");
+                    setFiltroQaEtapa("TESTAR DISK");
+                    setActiveModule("homologacao");
                   }}
                 >
-                  Ver Itens Atrasados no 5W2H <ArrowRight size={14} />
+                  Abrir Fila TESTAR DISK ({contadoresQa.testarDisk}) <ArrowRight size={14} />
                 </button>
                 <button
                   className="btn-secondary"
                   onClick={() => {
-                    setApenasNaoResolvidos(true);
-                    setActiveModule("plano5w2h");
+                    setFiltroQaEtapa("NAO_RESOLVIDO");
+                    setActiveModule("homologacao");
                   }}
                 >
-                  Filtrar 15 Não Resolvidos
+                  Ver Não Resolvidos ({contadoresQa.naoResolvido})
                 </button>
               </div>
             </div>
           </div>
 
           {/* =================================================================
-              ROW 3: GRÁFICO DE SOLICITAÇÕES & AJUSTES DA PLATAFORMA POR MÓDULO E MÊS (ESQUERDA)
+              ROW 3: GRÁFICO DE SOLICITAÇÕES & AJUSTES DA PLATAFORMA POR MÓDULO, SETOR (PLAN2) E MÊS
                      + DADOS EXPLICATIVOS DO BACKLOG DE 445 AJUSTES (DIREITA)
              ================================================================= */}
           <div className="chart-explainer-row">
@@ -1098,10 +1188,10 @@ export default function App() {
               <div>
                 <div className="panel-title" style={{ marginBottom: 2, display: "flex", alignItems: "center", gap: 8 }}>
                   <Activity size={17} color="#10b981" />
-                  3. Solicitações & Ajustes da Plataforma por Módulo e Safra Mensal
+                  3. Solicitações & Ajustes da Plataforma por Módulo, Setor (Plan2) e Safra Mensal
                 </div>
                 <div style={{ fontSize: 12, color: "#94a3b8" }}>
-                  Origem: Planilha &ldquo;datas das solicitaçoes e ajustes.xlsx&rdquo; ({dashboard.kpis.reqTotal} solicitações técnicas mapeadas)
+                  Origem: Planilha &ldquo;datas das solicitaçoes e ajustes.xlsx&rdquo; ({dashboard.kpis.reqTotal} solicitações em 22 datas de reunião)
                 </div>
               </div>
 
@@ -1154,34 +1244,34 @@ export default function App() {
             {/* EXPLICATIVO AO LADO DO GRÁFICO 3 */}
             <div className="explainer-card">
               <span className="explainer-badge">
-                <Wrench size={13} /> Dados Explicativos — Radiografia dos Ajustes de Sistema
+                <Wrench size={13} /> Dados Explicativos — Quadro Oficial Plan2 & Plan3
               </span>
               <div className="explainer-title">
-                O que compõe o backlog de {dashboard.kpis.reqTotal} solicitações da plataforma?
+                Radiografia das {dashboard.kpis.reqTotal} solicitações da planilha de ajustes
               </div>
               <ul className="explainer-list">
                 <li>
-                  <strong>Concentração em Eventos, Pedidos e Mapa de Assentos:</strong> Mais de 60% das demandas tratam da operação diária de venda de ingressos — bloqueio de quantidade para poltronas numeradas, preservação de curvatura de fileiras ao copiar setores, limite de ingressos por CPF no carrinho e ordenação de tickets por pedido.
+                  <strong>Divisão Oficial por Setor (Aba Plan2 da Planilha):</strong> O quadro consolidado na aba <code>Plan2</code> aponta <strong>55,5% das demandas do Setor de Suporte (288)</strong>, <strong>5,6% do Setor Financeiro (29)</strong> e <strong>38,9% de Outros Setores / Geral (202)</strong>.
+                </li>
+                <li>
+                  <strong>Eventos, Pedidos e Mapa de Assentos:</strong> Mais de 60% das solicitações na aba <code>Plan1</code> tratam de usabilidade operacional — bloqueio de quantidade para assentos numerados, curvatura de fileiras ao copiar setor, limite de ingressos por CPF e ordenação de ingressos.
                 </li>
                 <li className="warn">
-                  <strong>Demandas Críticas do Financeiro & Borderô:</strong> Incluem ajustes essenciais para a Fase 2: <em>&ldquo;Borderô: Adições → Créditos&rdquo;</em>, <em>&ldquo;Preview do Borderô: Exibir os dados de transferência bancária&rdquo;</em>, <em>&ldquo;Checkout: calcular tarifas quando a bandeira é Master&rdquo;</em> e <em>&ldquo;Tabela de Cálculo de Taxas visível apenas para o financeiro&rdquo;</em>.
+                  <strong>Ajustes do Financeiro & Borderô:</strong> Incluem <em>&ldquo;Borderô: Adições → Créditos&rdquo;</em>, <em>&ldquo;Preview do Borderô: Exibir dados de transferência bancária&rdquo;</em>, <em>&ldquo;Checkout: calcular tarifas quando a bandeira é Master&rdquo;</em> e <em>&ldquo;Tabela de Cálculo de Taxas visível apenas para o financeiro&rdquo;</em>.
                 </li>
                 <li>
-                  <strong>Reconhecimento Facial & App de Validação:</strong> O módulo de biometria facial (<code>disksite.karbonbox.com</code> / <code>beta.diskingressos.com.br</code>) teve o fluxo de cadastro documentado e ajustes de espelhamento de câmera e ocultação de campos redundantes no checkout.
-                </li>
-                <li>
-                  <strong>Taxa de Homologação (Plan3 vs. Plan1):</strong> Há <strong>{dashboard.kpis.reqDone} itens já homologados/concluídos</strong> (incluindo os 79 da aba <em>Plan3</em>), restando <strong>{dashboard.kpis.reqPending} itens</strong> para bateria de testes da equipe de Suporte.
+                  <strong>Aba Plan3 (79 Itens Homologados ☑️):</strong> A aba <code>Plan3</code> lista os 79 ajustes já testados e validados pela equipe. Quando você marca um ajuste como <code>Testado ☑️</code> aqui no ERP, a célula correspondente na planilha Excel também recebe o check automaticamente.
                 </li>
               </ul>
 
               <div className="explainer-kpi-strip">
                 <div className="explainer-mini-stat">
                   <span>Setor Suporte (Plan2)</span>
-                  <strong>55,5% das demandas</strong>
+                  <strong>288 (55,5%)</strong>
                 </div>
                 <div className="explainer-mini-stat">
-                  <span>Setor Financeiro</span>
-                  <strong>5,6% (Borderô/Taxas)</strong>
+                  <span>Setor Financeiro (Plan2)</span>
+                  <strong>29 (5,6%)</strong>
                 </div>
                 <div className="explainer-mini-stat">
                   <span>Homologados ☑️</span>
@@ -1200,7 +1290,7 @@ export default function App() {
               <div>
                 <div className="panel-title" style={{ marginBottom: 2, display: "flex", alignItems: "center", gap: 8 }}>
                   <HelpCircle size={17} color="#10b981" />
-                  4. Mapeamento das Dúvidas e Regras da Aba 2H ({perguntas.length} itens nas planilhas)
+                  4. Mapeamento das Dúvidas e Regras de Negócio da Aba 2H ({perguntas.length} itens nas planilhas)
                 </div>
                 <div style={{ fontSize: 12, color: "#94a3b8" }}>
                   Itens levantados na aba 2H da Planilha Financeiro que dependem de definição entre Financeiro (Karine), Diretoria e Guilherme
@@ -1243,20 +1333,20 @@ export default function App() {
             {/* EXPLICATIVO AO LADO DO GRÁFICO 4 */}
             <div className="explainer-card">
               <span className="explainer-badge">
-                <HelpCircle size={13} /> Dados Explicativos — Aba 2H das Planilhas
+                <HelpCircle size={13} /> Dados Explicativos — Regras de Sistema Pendentes (Aba 2H)
               </span>
               <div className="explainer-title">
-                Por que esses itens da aba 2H aparecem como pendentes nas planilhas?
+                Por que esses itens da aba 2H impactam os ajustes do sistema?
               </div>
               <ul className="explainer-list">
                 <li>
-                  <strong>Divisão de Taxa (80/20) e Descontos (Linha 19 da aba 2H):</strong> A planilha registra a dúvida sobre como dividir a taxa quando há descontos concedidos ao produtor e quem absorve o custo em cada modalidade.
+                  <strong>Divisão de Taxa (80/20) e Descontos (Linha 19 da aba 2H):</strong> Define como o sistema deve calcular o repasse quando há descontos concedidos ao produtor e quem absorve a taxa do gateway.
                 </li>
                 <li className="warn">
-                  <strong>Múltiplas Bandeiras (REDE / PAG) e SPREAD (Linhas 15 a 18 da aba 2H):</strong> A aba 2H aponta a necessidade de cadastrar taxas diferentes por método (Cartão, PIX, POS, Site, PDV) e calcular o spread sobre o parcelamento.
+                  <strong>Múltiplas Bandeiras (REDE / PAG) e SPREAD (Linhas 15 a 18 da aba 2H):</strong> A aba 2H aponta a necessidade de parametrizar taxas diferentes por método (Cartão, PIX, POS, Site, PDV) e calcular o spread sobre o parcelamento.
                 </li>
                 <li>
-                  <strong>Antecipação de Eventos e Liberação de Caixa (Linhas 10 e 20 da aba 2H):</strong> Define a pergunta se pode ser liberado até 100% do valor que está no caixa da Disk e como registrar o lançamento de antecipação ao produtor.
+                  <strong>Antecipação de Eventos e Liberação de Caixa (Linhas 10 e 20 da aba 2H):</strong> Define a regra no sistema sobre liberar até 100% do valor em caixa e o formato do comprovante/recibo de antecipação.
                 </li>
               </ul>
 
@@ -1265,16 +1355,17 @@ export default function App() {
                   className="btn-emerald"
                   onClick={() => setActiveModule("perguntas")}
                 >
-                  Responder Dúvidas da Aba 2H <ArrowRight size={14} />
+                  Registrar Decisões da Aba 2H <ArrowRight size={14} />
                 </button>
                 <button
                   className="btn-secondary"
                   onClick={() => {
                     setFiltro5wOrigem("FINANCEIRO");
+                    setFiltro5wAba("2H");
                     setActiveModule("plano5w2h");
                   }}
                 >
-                  Ver Aba 5W/2H Financeiro
+                  Ver Aba 2H Financeiro
                 </button>
               </div>
             </div>
@@ -1300,30 +1391,33 @@ export default function App() {
               <button
                 className="btn-secondary"
                 style={{ padding: "5px 12px", fontSize: 12 }}
-                onClick={() => setActiveModule("plano5w2h")}
+                onClick={() => setActiveModule("homologacao")}
               >
-                Abrir Plano 5W2H Completo
+                Abrir Central de Homologação & QA
               </button>
             </div>
             <table className="fin-table">
               <thead>
                 <tr>
-                  <th>Origem</th>
-                  <th>Plano de Ação / Questão Pendente</th>
+                  <th>Planilha / Aba</th>
+                  <th>Plano de Ação / Ajuste de Sistema</th>
                   <th>Responsável</th>
                   <th>Área</th>
-                  <th>Como / Ponto Focal (2H)</th>
+                  <th>Ponto Focal / Etapa (Coluna D)</th>
                   <th>Status</th>
                 </tr>
               </thead>
               <tbody>
                 {dashboard.atrasadosDestaque.map((p: any) => (
                   <tr key={p.id}>
-                    <td><span className="tag tag-slate">{p.origem_planilha}</span></td>
+                    <td>
+                      <span className="tag tag-slate">{p.origem_planilha}</span>{" "}
+                      <span className="tag tag-emerald">{p.aba_origem || "5W"}</span>
+                    </td>
                     <td style={{ fontWeight: 600 }}>{p.plano}</td>
                     <td>{p.who_nome}</td>
                     <td>{p.area_nome}</td>
-                    <td style={{ color: "#94a3b8" }}>{p.fim_planejado || "Verificar com Guilherme / Disk"}</td>
+                    <td style={{ color: "#94a3b8" }}>{p.how || p.fim_planejado || "Verificar com Guilherme / Disk"}</td>
                     <td>
                       {p.nao_resolvido && (
                         <span className="tag tag-red" style={{ marginRight: 6 }}>
@@ -1341,7 +1435,312 @@ export default function App() {
       )}
 
       {/* =====================================================================
-          MODULE 1: FINANCEIRO – RAZÃO CONTÁBIL E PAGAMENTOS (EXACT VIDEO UI)
+          MODULE 1 (NEW): CENTRAL DE HOMOLOGAÇÃO & QA DE AJUSTES (ABA 2H: TESTAR DISK / TESTE OK / GUILHERME)
+         ===================================================================== */}
+      {activeModule === "homologacao" && (
+        <main className="page-container-wide">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
+            <div>
+              <h1 className="page-title">
+                Central de Homologação & QA de Ajustes do Sistema (Aba 2H — 202 Itens)
+              </h1>
+              <p className="page-subtitle" style={{ marginBottom: 0 }}>
+                Controle operacional da coluna <strong>How (D)</strong> e <strong>Status (G)</strong> das abas 2H das planilhas Suporte (168 itens) e Financeiro (34 itens). Qualquer aprovação grava direto na linha exata da planilha Excel.
+              </p>
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button className="btn-secondary" onClick={handleManualSyncPlanilhas} disabled={isSyncing}>
+                <RefreshCw size={14} /> Sincronizar Planilhas Agora
+              </button>
+              <button
+                className="btn-emerald"
+                onClick={() => {
+                  setNovo5wOrigem("SUPORTE");
+                  setShowNew5wModal(true);
+                  setActiveModule("plano5w2h");
+                }}
+              >
+                <Plus size={14} /> Novo Item 5W2H
+              </button>
+            </div>
+          </div>
+
+          {/* 4 INTERACTIVE QA STAGE CARDS */}
+          <div className="status-cards-grid" style={{ marginBottom: 18 }}>
+            <div
+              className="status-card"
+              style={{
+                cursor: "pointer",
+                borderColor: filtroQaEtapa === "TESTAR DISK" ? "#f59e0b" : undefined
+              }}
+              onClick={() => setFiltroQaEtapa(filtroQaEtapa === "TESTAR DISK" ? "ALL" : "TESTAR DISK")}
+            >
+              <div className="status-card-top">
+                <span className="status-card-title">1. Fila TESTAR DISK (Aguardando QA)</span>
+                <span className="tag tag-amber">Prioridade QA</span>
+              </div>
+              <div className="status-card-value" style={{ color: "#fbbf24" }}>
+                {contadoresQa.testarDisk} ajustes
+              </div>
+              <div className="status-card-meta">
+                <span>41 Suporte + 3 Financeiro</span>
+                <span style={{ color: "#fbbf24", fontWeight: 700 }}>Clique para filtrar</span>
+              </div>
+            </div>
+
+            <div
+              className="status-card"
+              style={{
+                cursor: "pointer",
+                borderColor: filtroQaEtapa === "GUILHERME" ? "#3b82f6" : undefined
+              }}
+              onClick={() => setFiltroQaEtapa(filtroQaEtapa === "GUILHERME" ? "ALL" : "GUILHERME")}
+            >
+              <div className="status-card-top">
+                <span className="status-card-title">2. Fila Guilherme (Desenvolvimento)</span>
+                <span className="tag tag-slate">Dev / Código</span>
+              </div>
+              <div className="status-card-value" style={{ color: "#60a5fa" }}>
+                {contadoresQa.guilherme} ajustes
+              </div>
+              <div className="status-card-meta">
+                <span>18 Financeiro + 17 Suporte</span>
+                <span style={{ color: "#60a5fa", fontWeight: 700 }}>Clique para filtrar</span>
+              </div>
+            </div>
+
+            <div
+              className="status-card"
+              style={{
+                cursor: "pointer",
+                borderColor: filtroQaEtapa === "NAO_RESOLVIDO" ? "#ef4444" : undefined
+              }}
+              onClick={() => setFiltroQaEtapa(filtroQaEtapa === "NAO_RESOLVIDO" ? "ALL" : "NAO_RESOLVIDO")}
+            >
+              <div className="status-card-top">
+                <span className="status-card-title">3. Marcados &ldquo;NÃO RESOLVIDO&rdquo;</span>
+                <span className="tag tag-red">Bloqueio</span>
+              </div>
+              <div className="status-card-value" style={{ color: "#f87171" }}>
+                {contadoresQa.naoResolvido} travas
+              </div>
+              <div className="status-card-meta">
+                <span>Coluna E da aba 2H Financeiro</span>
+                <span style={{ color: "#f87171", fontWeight: 700 }}>Clique para filtrar</span>
+              </div>
+            </div>
+
+            <div
+              className="status-card"
+              style={{
+                cursor: "pointer",
+                borderColor: filtroQaEtapa === "TESTE OK" ? "#10b981" : undefined
+              }}
+              onClick={() => setFiltroQaEtapa(filtroQaEtapa === "TESTE OK" ? "ALL" : "TESTE OK")}
+            >
+              <div className="status-card-top">
+                <span className="status-card-title">4. Homologados (TESTE OK)</span>
+                <span className="tag tag-emerald">Validado ☑️</span>
+              </div>
+              <div className="status-card-value" style={{ color: "#34d399" }}>
+                {contadoresQa.testeOk} aprovados
+              </div>
+              <div className="status-card-meta">
+                <span>Validados em produção pela Disk</span>
+                <span style={{ color: "#34d399", fontWeight: 700 }}>Clique para filtrar</span>
+              </div>
+            </div>
+          </div>
+
+          {/* FILTER BAR */}
+          <div className="panel" style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+            <input
+              className="input-dark"
+              style={{ flex: 1, minWidth: 260 }}
+              placeholder="Buscar ajuste na aba 2H (ex: Borderô, Assento, Lote, 3DS, Dupla entrada, Cartões)..."
+              value={buscaQa}
+              onChange={e => setBuscaQa(e.target.value)}
+            />
+            <select
+              className="select-dark"
+              value={filtroQaEtapa}
+              onChange={e => setFiltroQaEtapa(e.target.value as any)}
+            >
+              <option value="ALL">Todas as Etapas 2H ({contadoresQa.total})</option>
+              <option value="TESTAR DISK">🧪 TESTAR DISK ({contadoresQa.testarDisk})</option>
+              <option value="GUILHERME">🛠️ Com Guilherme ({contadoresQa.guilherme})</option>
+              <option value="NAO_RESOLVIDO">🚨 NÃO RESOLVIDO ({contadoresQa.naoResolvido})</option>
+              <option value="TESTE OK">☑️ TESTE OK ({contadoresQa.testeOk})</option>
+            </select>
+            <select
+              className="select-dark"
+              value={filtroQaOrigem}
+              onChange={e => setFiltroQaOrigem(e.target.value)}
+            >
+              <option value="ALL">Ambas as Planilhas (Suporte + Financeiro)</option>
+              <option value="SUPORTE">Planilha Suporte (168 itens 2H)</option>
+              <option value="FINANCEIRO">Planilha Financeiro (34 itens 2H)</option>
+            </select>
+          </div>
+
+          {/* HOMOLOGATION TABLE */}
+          <div className="panel-no-pad">
+            <table className="fin-table">
+              <thead>
+                <tr>
+                  <th style={{ width: "11%" }}>Planilha / Linha</th>
+                  <th style={{ width: "36%" }}>Ajuste / Tarefa Técnica (Coluna C da Aba 2H)</th>
+                  <th style={{ width: "16%" }}>Etapa Atual (Coluna D - How)</th>
+                  <th style={{ width: "14%" }}>Status na Planilha (Coluna G)</th>
+                  <th style={{ width: "23%" }}>Ação Rápida de Homologação (ERP ⇄ Excel)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {itensHomologacao2H.map(item => {
+                  const etapa = item.etapa_teste || "ESTRATEGICO";
+                  return (
+                    <tr key={item.id}>
+                      <td>
+                        <span className="tag tag-slate">{item.origem_planilha}</span>
+                        <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>
+                          Aba <strong>{item.aba_origem || "2H"}</strong> • Linha <strong>{item.linha_planilha || "—"}</strong>
+                        </div>
+                      </td>
+                      <td>
+                        <div style={{ fontWeight: 700, color: "#ecfdf5" }}>{item.plano}</div>
+                        {item.nao_resolvido && (
+                          <span className="tag tag-red" style={{ marginTop: 4, display: "inline-block" }}>
+                            Coluna E: NÃO RESOLVIDO
+                          </span>
+                        )}
+                      </td>
+                      <td>
+                        <span
+                          className={`tag ${
+                            etapa === "TESTE OK"
+                              ? "tag-emerald"
+                              : etapa === "TESTAR DISK"
+                              ? "tag-amber"
+                              : etapa === "GUILHERME"
+                              ? "tag-slate"
+                              : "tag-slate"
+                          }`}
+                        >
+                          {item.how || etapa}
+                        </span>
+                      </td>
+                      <td>
+                        <span
+                          className={`tag ${
+                            item.status === "Concluído"
+                              ? "tag-emerald"
+                              : item.status === "Atrasado"
+                              ? "tag-red"
+                              : "tag-amber"
+                          }`}
+                        >
+                          {item.status_original || item.status}
+                        </span>
+                      </td>
+                      <td>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          {etapa !== "TESTE OK" && (
+                            <button
+                              className="btn-emerald"
+                              style={{ padding: "4px 9px", fontSize: 11.5 }}
+                              title="Grava 'TESTE OK' na Coluna D e 'Realizado' na Coluna G da planilha Excel"
+                              onClick={async () => {
+                                const res = await fetch(`/api/plano-acao/${item.id}`, {
+                                  method: "PUT",
+                                  headers: apiHeaders(),
+                                  body: JSON.stringify({
+                                    how: "TESTE OK",
+                                    etapa_teste: "TESTE OK",
+                                    status: "Concluído",
+                                    nao_resolvido: false
+                                  })
+                                });
+                                const data = await res.json();
+                                const synced = data.excelSync?.syncedFiles?.length
+                                  ? ` (${data.excelSync.syncedFiles[0]} linha ${item.linha_planilha})`
+                                  : "";
+                                showNotification(`Homologado! TESTE OK gravado no ERP e no Excel${synced}`);
+                                fetchAll(dashOrigemFilter);
+                              }}
+                            >
+                              ☑️ Aprovar TESTE OK
+                            </button>
+                          )}
+
+                          {etapa !== "TESTAR DISK" && (
+                            <button
+                              className="btn-secondary"
+                              style={{ padding: "4px 9px", fontSize: 11.5 }}
+                              title="Move para a fila 'TESTAR DISK' na Coluna D da aba 2H"
+                              onClick={async () => {
+                                const res = await fetch(`/api/plano-acao/${item.id}`, {
+                                  method: "PUT",
+                                  headers: apiHeaders(),
+                                  body: JSON.stringify({
+                                    how: "TESTAR DISK",
+                                    etapa_teste: "TESTAR DISK"
+                                  })
+                                });
+                                await res.json();
+                                showNotification(`Item movido para a fila TESTAR DISK (Linha ${item.linha_planilha})!`);
+                                fetchAll(dashOrigemFilter);
+                              }}
+                            >
+                              🧪 Fila TESTAR DISK
+                            </button>
+                          )}
+
+                          {item.nao_resolvido ? (
+                            <button
+                              className="btn-secondary"
+                              style={{ padding: "4px 9px", fontSize: 11.5, borderColor: "#10b981", color: "#34d399" }}
+                              onClick={async () => {
+                                await fetch(`/api/plano-acao/${item.id}`, {
+                                  method: "PUT",
+                                  headers: apiHeaders(),
+                                  body: JSON.stringify({ nao_resolvido: false, status: "Concluído" })
+                                });
+                                showNotification(`Trava 'NÃO RESOLVIDO' removida na linha ${item.linha_planilha}!`);
+                                fetchAll(dashOrigemFilter);
+                              }}
+                            >
+                              Destravar / Resolver
+                            </button>
+                          ) : (
+                            <button
+                              className="btn-danger-outline"
+                              style={{ padding: "4px 9px", fontSize: 11.5 }}
+                              onClick={async () => {
+                                await fetch(`/api/plano-acao/${item.id}`, {
+                                  method: "PUT",
+                                  headers: apiHeaders(),
+                                  body: JSON.stringify({ nao_resolvido: true, status: "Não iniciado" })
+                                });
+                                showNotification(`Marcado como NÃO RESOLVIDO na linha ${item.linha_planilha}!`);
+                                fetchAll(dashOrigemFilter);
+                              }}
+                            >
+                              Não Resolvido
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </main>
+      )}
+
+      {/* =====================================================================
+          MODULE 2: FINANCEIRO – RAZÃO CONTÁBIL E PAGAMENTOS (SIMULADOR DE REGRAS FASE 2)
          ===================================================================== */}
       {activeModule === "financeiro" && (
         <main className="page-container">
@@ -1814,15 +2213,15 @@ export default function App() {
       )}
 
       {/* =====================================================================
-          MODULE 3: PLANO DE AÇÃO 5W2H (TAREFA T3 & T5 — SINCRONIZAÇÃO BIDIRECIONAL)
+          MODULE 3: PLANO DE AÇÃO 5W2H COMPLETO (ABAS 5W, 2H E EXE — SINCRONIZAÇÃO BIDIRECIONAL)
          ===================================================================== */}
       {activeModule === "plano5w2h" && (
-        <main className="page-container">
+        <main className="page-container-wide">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
             <div>
-              <h1 className="page-title">Plano de Ação 5W2H Unificado (Financeiro & Suporte)</h1>
+              <h1 className="page-title">Plano de Ação 5W2H Completo (Abas 5W, 2H & Execução EXE)</h1>
               <p className="page-subtitle" style={{ marginBottom: 0 }}>
-                {planos.length} itens sincronizados em mão dupla (Planilhas Excel ⇄ ERP PostgreSQL).
+                {planos.length} linhas oficiais sincronizadas em mão dupla (63 Planos Macro da Aba 5W + 202 Tarefas/Ajustes da Aba 2H).
               </p>
             </div>
             <div style={{ display: "flex", gap: 8 }}>
@@ -1833,6 +2232,34 @@ export default function App() {
                 <Plus size={14} /> Nova Ação 5W2H
               </button>
             </div>
+          </div>
+
+          {/* SUB-ABAS DA ESTRUTURA DA PLANILHA: TODOS / ABA 5W / ABA 2H / ABA EXE */}
+          <div className="subtabs-bar" style={{ marginBottom: 16 }}>
+            <button
+              className={`subtab-btn ${filtro5wAba === "ALL" ? "active" : ""}`}
+              onClick={() => setFiltro5wAba("ALL")}
+            >
+              Todas as Linhas ({planos.length})
+            </button>
+            <button
+              className={`subtab-btn ${filtro5wAba === "5W" ? "active" : ""}`}
+              onClick={() => setFiltro5wAba("5W")}
+            >
+              Aba 5W — Planos Macro ({planos.filter(p => (p.aba_origem || "5W") === "5W").length})
+            </button>
+            <button
+              className={`subtab-btn ${filtro5wAba === "2H" ? "active" : ""}`}
+              onClick={() => setFiltro5wAba("2H")}
+            >
+              Aba 2H — Ajustes & Tarefas ({planos.filter(p => p.aba_origem === "2H").length})
+            </button>
+            <button
+              className={`subtab-btn ${filtro5wAba === "EXE" ? "active" : ""}`}
+              onClick={() => setFiltro5wAba("EXE")}
+            >
+              Aba EXE — Tarefas Programadas x Realizadas ({planos.filter(p => (p.aba_origem || "5W") === "5W").length})
+            </button>
           </div>
 
           {showNew5wModal && (
@@ -1860,7 +2287,7 @@ export default function App() {
                   <label>Como / Responsável Técnico (Aba 2H)</label>
                   <input
                     className="input-dark"
-                    placeholder="Ex: Guilherme / Equipe Disk"
+                    placeholder="Ex: Guilherme / TESTAR DISK"
                     value={novo5wHow}
                     onChange={e => setNovo5wHow(e.target.value)}
                   />
@@ -1890,7 +2317,7 @@ export default function App() {
           <div className="panel" style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
             <input
               className="input-dark"
-              style={{ minWidth: 260 }}
+              style={{ flex: 1, minWidth: 260 }}
               placeholder="Buscar por plano, o que será feito, quem ou como..."
               value={busca5w}
               onChange={e => setBusca5w(e.target.value)}
@@ -1910,10 +2337,10 @@ export default function App() {
               onChange={e => setFiltro5wStatus(e.target.value)}
             >
               <option value="ALL">Todos os Status</option>
-              <option value="Concluído">Concluído</option>
+              <option value="Concluído">Concluído / Realizado</option>
               <option value="Em andamento">Em andamento</option>
               <option value="Atrasado">Atrasado</option>
-              <option value="Não iniciado">Não iniciado</option>
+              <option value="Não iniciado">Não iniciado / Não Realizado</option>
             </select>
             <label style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "#f87171", fontWeight: 600, cursor: "pointer" }}>
               <input
@@ -1929,89 +2356,125 @@ export default function App() {
             <table className="fin-table">
               <thead>
                 <tr>
-                  <th>Origem</th>
-                  <th>Plano / O Que (5W)</th>
+                  <th>Planilha / Aba / Linha</th>
+                  <th>Plano / Tarefa Técnica (Coluna C)</th>
                   <th>Quem / Área</th>
-                  <th>Como (2H)</th>
-                  <th>Prazo</th>
+                  <th>{filtro5wAba === "EXE" ? "Tarefas Programadas x Realizadas (Aba EXE)" : "Como / Etapa QA (Coluna D)"}</th>
+                  <th>Prazo / Custo</th>
                   <th>Status (ERP ⇄ Planilha)</th>
                 </tr>
               </thead>
               <tbody>
-                {planosFiltrados.map(p => (
-                  <tr key={p.id}>
-                    <td>
-                      <span className="tag tag-slate">{p.origem_planilha}</span>
-                      {p.nao_resolvido && (
-                        <div style={{ marginTop: 4 }}>
-                          <span
-                            className="tag tag-red"
-                            style={{ cursor: "pointer" }}
-                            title="Clique para marcar como Resolvido no ERP e na Planilha"
-                            onClick={async () => {
-                              const res = await fetch(`/api/plano-acao/${p.id}`, {
-                                method: "PUT",
-                                headers: apiHeaders(),
-                                body: JSON.stringify({ nao_resolvido: false })
-                              });
-                              const data = await res.json();
-                              const synced = data.excelSync?.syncedFiles?.length
-                                ? ` e gravado em ${data.excelSync.syncedFiles[0]}`
-                                : "";
-                              showNotification(`Item #${p.id} marcado como Resolvido no ERP${synced}!`);
-                              fetchAll();
-                            }}
-                          >
-                            NÃO RESOLVIDO ✕
+                {planosFiltrados.map(p => {
+                  const prog = Number(p.tarefas_programadas || 0);
+                  const real = Number(p.tarefas_realizadas || 0);
+                  const pctExe = prog > 0 ? Math.round((real / prog) * 100) : p.status === "Concluído" ? 100 : 0;
+                  return (
+                    <tr key={p.id}>
+                      <td>
+                        <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
+                          <span className="tag tag-slate">{p.origem_planilha}</span>
+                          <span className={`tag ${p.aba_origem === "2H" ? "tag-amber" : "tag-emerald"}`}>
+                            Aba {p.aba_origem || "5W"}
                           </span>
                         </div>
-                      )}
-                    </td>
-                    <td style={{ maxWidth: 340 }}>
-                      <div style={{ fontWeight: 700 }}>{p.plano}</div>
-                      {p.what && p.what !== p.plano && (
-                        <div style={{ fontSize: 12, color: "#94a3b8" }}>{p.what}</div>
-                      )}
-                    </td>
-                    <td>
-                      <div style={{ fontWeight: 600 }}>{p.who_nome || "—"}</div>
-                      <span className="tag tag-slate">{p.area_nome || "DISK"}</span>
-                    </td>
-                    <td>{p.how || p.onde || "—"}</td>
-                    <td style={{ fontSize: 12 }}>{p.fim_planejado || "—"}</td>
-                    <td>
-                      <select
-                        className="select-dark"
-                        style={{ padding: "4px 8px", fontSize: 12 }}
-                        value={p.status}
-                        onChange={async e => {
-                          const novoStatus = e.target.value;
-                          const res = await fetch(`/api/plano-acao/${p.id}`, {
-                            method: "PUT",
-                            headers: apiHeaders(),
-                            body: JSON.stringify({
-                              status: novoStatus,
-                              nao_resolvido: novoStatus === "Concluído" ? false : p.nao_resolvido
-                            })
-                          });
-                          const data = await res.json();
-                          const syncedMsg = data.excelSync?.syncedFiles?.length
-                            ? ` + Planilha Excel atualizada (${data.excelSync.syncedFiles[0]})`
-                            : data.excelSync?.lockedFiles?.length
-                            ? ` (Salvo no ERP; feche a planilha no Excel para gravar no arquivo)`
-                            : "";
-                          showNotification(`Plano #${p.id} → ${novoStatus}${syncedMsg}`);
-                          fetchAll();
-                        }}
-                      >
-                        <option value="Concluído">Concluído</option>
-                        <option value="Em andamento">Em andamento</option>
-                        <option value="Atrasado">Atrasado</option>
-                        <option value="Não iniciado">Não iniciado</option>
-                      </select>
-                    </td>
-                  </tr>
-                ))}
+                        <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 3 }}>
+                          Linha {p.linha_planilha || "—"}
+                        </div>
+                        {p.nao_resolvido && (
+                          <div style={{ marginTop: 4 }}>
+                            <span
+                              className="tag tag-red"
+                              style={{ cursor: "pointer" }}
+                              title="Clique para marcar como Resolvido no ERP e na Planilha"
+                              onClick={async () => {
+                                const res = await fetch(`/api/plano-acao/${p.id}`, {
+                                  method: "PUT",
+                                  headers: apiHeaders(),
+                                  body: JSON.stringify({ nao_resolvido: false })
+                                });
+                                const data = await res.json();
+                                const synced = data.excelSync?.syncedFiles?.length
+                                  ? ` e gravado em ${data.excelSync.syncedFiles[0]}`
+                                  : "";
+                                showNotification(`Item #${p.id} marcado como Resolvido no ERP${synced}!`);
+                                fetchAll(dashOrigemFilter);
+                              }}
+                            >
+                              NÃO RESOLVIDO ✕
+                            </span>
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ maxWidth: 360 }}>
+                        <div style={{ fontWeight: 700 }}>{p.plano}</div>
+                        {p.what && p.what !== p.plano && (
+                          <div style={{ fontSize: 12, color: "#94a3b8" }}>{p.what}</div>
+                        )}
+                      </td>
+                      <td>
+                        <div style={{ fontWeight: 600 }}>{p.who_nome || "—"}</div>
+                        <span className="tag tag-slate">{p.area_nome || "DISK"}</span>
+                      </td>
+                      <td>
+                        {filtro5wAba === "EXE" || (p.aba_origem === "5W" && prog > 0) ? (
+                          <div>
+                            <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>
+                              {real} realizadas de {prog} programadas ({pctExe}%)
+                            </div>
+                            <div className="progress-bar-dark" style={{ height: 7, margin: 0 }}>
+                              <div className="progress-fill-dark" style={{ width: `${pctExe}%` }} />
+                            </div>
+                          </div>
+                        ) : (
+                          <span
+                            className={`tag ${
+                              p.etapa_teste === "TESTE OK"
+                                ? "tag-emerald"
+                                : p.etapa_teste === "TESTAR DISK"
+                                ? "tag-amber"
+                                : "tag-slate"
+                            }`}
+                          >
+                            {p.how || p.onde || "—"}
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ fontSize: 12 }}>{p.fim_planejado || "—"}</td>
+                      <td>
+                        <select
+                          className="select-dark"
+                          style={{ padding: "4px 8px", fontSize: 12 }}
+                          value={p.status}
+                          onChange={async e => {
+                            const novoStatus = e.target.value;
+                            const res = await fetch(`/api/plano-acao/${p.id}`, {
+                              method: "PUT",
+                              headers: apiHeaders(),
+                              body: JSON.stringify({
+                                status: novoStatus,
+                                nao_resolvido: novoStatus === "Concluído" ? false : p.nao_resolvido
+                              })
+                            });
+                            const data = await res.json();
+                            const syncedMsg = data.excelSync?.syncedFiles?.length
+                              ? ` + Planilha Excel atualizada (${data.excelSync.syncedFiles[0]} linha ${p.linha_planilha})`
+                              : data.excelSync?.lockedFiles?.length
+                              ? ` (Salvo no ERP; feche a planilha no Excel para gravar no arquivo)`
+                              : "";
+                            showNotification(`Plano #${p.id} → ${novoStatus}${syncedMsg}`);
+                            fetchAll(dashOrigemFilter);
+                          }}
+                        >
+                          <option value="Concluído">Concluído / Realizado</option>
+                          <option value="Em andamento">Em andamento</option>
+                          <option value="Atrasado">Atrasado</option>
+                          <option value="Não iniciado">Não iniciado / Não Realizado</option>
+                        </select>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -2019,27 +2482,145 @@ export default function App() {
       )}
 
       {/* =====================================================================
-          MODULE 4: SOLICITAÇÕES & AJUSTES DA PLATAFORMA (GUILHERME)
+          MODULE 4: SOLICITAÇÕES & AJUSTES DA PLATAFORMA (GUILHERME — PLAN1, PLAN2 E PLAN3)
          ===================================================================== */}
       {activeModule === "solicitacoes" && (
-        <main className="page-container">
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+        <main className="page-container-wide">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
             <div>
-              <h1 className="page-title">Solicitações e Ajustes da Plataforma (Guilherme)</h1>
+              <h1 className="page-title">Solicitações e Ajustes da Plataforma (Guilherme — Plan1, Plan2 & Plan3)</h1>
               <p className="page-subtitle" style={{ marginBottom: 0 }}>
-                445 solicitações sincronizadas em mão dupla com &ldquo;datas das solicitaçoes e ajustes.xlsx&rdquo; (Plan1 + Plan3).
+                {solicitacoes.length} solicitações sincronizadas em mão dupla com &ldquo;datas das solicitaçoes e ajustes.xlsx&rdquo; ({datasSolicitacao.length} datas de reunião).
               </p>
             </div>
-            <button className="btn-secondary" onClick={handleManualSyncPlanilhas} disabled={isSyncing}>
-              <RefreshCw size={14} /> Puxar da Planilha
-            </button>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button className="btn-secondary" onClick={handleManualSyncPlanilhas} disabled={isSyncing}>
+                <RefreshCw size={14} /> Puxar da Planilha
+              </button>
+              <button className="btn-emerald" onClick={() => setShowNewSolModal(!showNewSolModal)}>
+                <Plus size={14} /> Nova Solicitação p/ Guilherme
+              </button>
+            </div>
           </div>
 
-          <div className="panel" style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+          {/* QUADRO OFICIAL PLAN2 DA PLANILHA */}
+          <div className="status-cards-grid" style={{ marginBottom: 16 }}>
+            <div
+              className="status-card"
+              style={{ cursor: "pointer" }}
+              onClick={() => setFiltroStatusSol("ALL")}
+            >
+              <div className="status-card-top">
+                <span className="status-card-title">Setor de Suporte (Aba Plan2)</span>
+                <span className="tag tag-emerald">55,5%</span>
+              </div>
+              <div className="status-card-value">288 demandas</div>
+              <div className="status-card-meta">
+                <span>Eventos, Pedidos, Mapa de Assentos, Facial</span>
+              </div>
+            </div>
+
+            <div
+              className="status-card"
+              style={{ cursor: "pointer" }}
+              onClick={() => {
+                setFiltroModuloSol("Financeiro & Borderô");
+                setFiltroStatusSol("ALL");
+              }}
+            >
+              <div className="status-card-top">
+                <span className="status-card-title">Setor Financeiro (Aba Plan2)</span>
+                <span className="tag tag-amber">5,6%</span>
+              </div>
+              <div className="status-card-value">29 demandas</div>
+              <div className="status-card-meta">
+                <span>Borderô, Taxas Master, Cartões, Contabilidade</span>
+              </div>
+            </div>
+
+            <div
+              className="status-card"
+              style={{ cursor: "pointer" }}
+              onClick={() => setFiltroStatusSol("CONCLUIDOS")}
+            >
+              <div className="status-card-top">
+                <span className="status-card-title">Testados & Homologados ☑️ (Plan3)</span>
+                <span className="tag tag-emerald">Plan3</span>
+              </div>
+              <div className="status-card-value" style={{ color: "#34d399" }}>
+                {solicitacoes.filter(s => s.concluido).length} testados
+              </div>
+              <div className="status-card-meta">
+                <span>Clique para filtrar os homologados</span>
+              </div>
+            </div>
+
+            <div
+              className="status-card"
+              style={{ cursor: "pointer" }}
+              onClick={() => setFiltroStatusSol("PENDENTES")}
+            >
+              <div className="status-card-top">
+                <span className="status-card-title">Pendentes de Teste / Entrega</span>
+                <span className="tag tag-amber">Backlog</span>
+              </div>
+              <div className="status-card-value" style={{ color: "#fbbf24" }}>
+                {solicitacoes.filter(s => !s.concluido).length} pendentes
+              </div>
+              <div className="status-card-meta">
+                <span>Clique para ver fila pendente</span>
+              </div>
+            </div>
+          </div>
+
+          {showNewSolModal && (
+            <div className="panel" style={{ borderColor: "#10b981", marginBottom: 16 }}>
+              <div className="panel-title">Registrar Nova Solicitação de Ajuste para o Guilherme</div>
+              <form className="form-row" onSubmit={handleCriarSolicitacao}>
+                <div className="field" style={{ width: 160 }}>
+                  <label>Data da Reunião</label>
+                  <input
+                    type="date"
+                    className="input-dark"
+                    value={novaSolData}
+                    onChange={e => setNovaSolData(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="field" style={{ width: 220 }}>
+                  <label>Módulo do Sistema</label>
+                  <select className="select-dark" value={novaSolModulo} onChange={e => setNovaSolModulo(e.target.value)}>
+                    <option value="Eventos & Ingressos">Eventos & Ingressos</option>
+                    <option value="Pedidos & Checkout">Pedidos & Checkout</option>
+                    <option value="Mapa de Assentos">Mapa de Assentos</option>
+                    <option value="Financeiro & Borderô">Financeiro & Borderô</option>
+                    <option value="Reconhecimento Facial">Reconhecimento Facial</option>
+                    <option value="PDV & Impressão">PDV & Impressão</option>
+                    <option value="Usuários & Permissões">Usuários & Permissões</option>
+                    <option value="Marketing & Analytics">Marketing & Analytics</option>
+                    <option value="Geral / Plataforma">Geral / Plataforma</option>
+                  </select>
+                </div>
+                <div className="field" style={{ flex: 1, minWidth: 280 }}>
+                  <label>Descrição Técnica do Ajuste Solicitado</label>
+                  <input
+                    className="input-dark"
+                    placeholder="Ex: Borderô: exibir discriminação de taxas por bandeira..."
+                    value={novaSolDesc}
+                    onChange={e => setNovaSolDesc(e.target.value)}
+                    required
+                  />
+                </div>
+                <button type="submit" className="btn-emerald">Registrar Solicitação</button>
+              </form>
+            </div>
+          )}
+
+          <div className="panel" style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
             <input
               className="input-dark"
               style={{ flex: 1, minWidth: 240 }}
-              placeholder="Buscar ajuste (ex: Borderô, Master, Mapa, Facial, Cupom)..."
+              placeholder="Buscar ajuste (ex: Borderô, Master, Mapa, Facial, Cupom, Assento)..."
               value={buscaSolicitacao}
               onChange={e => setBuscaSolicitacao(e.target.value)}
             />
@@ -2048,10 +2629,30 @@ export default function App() {
               value={filtroModuloSol}
               onChange={e => setFiltroModuloSol(e.target.value)}
             >
-              <option value="ALL">Todos os Módulos</option>
+              <option value="ALL">Todos os Módulos ({solicitacoes.length})</option>
               {modulosSolicitacao.map(m => (
                 <option key={m} value={m}>{m}</option>
               ))}
+            </select>
+            <select
+              className="select-dark"
+              value={filtroDataSol}
+              onChange={e => setFiltroDataSol(e.target.value)}
+            >
+              <option value="ALL">Todas as 22 Datas de Reunião</option>
+              {datasSolicitacao.map(d => (
+                <option key={d} value={d}>Reunião {d}</option>
+              ))}
+            </select>
+            <select
+              className="select-dark"
+              value={filtroStatusSol}
+              onChange={e => setFiltroStatusSol(e.target.value as any)}
+            >
+              <option value="ALL">Todos os Status ({solicitacoesFiltradas.length})</option>
+              <option value="PENDENTES">Pendentes de Teste</option>
+              <option value="CONCLUIDOS">Testados ☑️ (Plan1 + Plan3)</option>
+              <option value="PLAN3">Aba Plan3 (79 Homologados)</option>
             </select>
           </div>
 
@@ -2059,15 +2660,15 @@ export default function App() {
             <table className="fin-table">
               <thead>
                 <tr>
-                  <th>Nº</th>
-                  <th>Data</th>
-                  <th>Descrição da Solicitação / Ajuste</th>
-                  <th>Módulo</th>
-                  <th>Homologação (ERP ⇄ Excel)</th>
+                  <th style={{ width: "8%" }}>Nº</th>
+                  <th style={{ width: "12%" }}>Data Reunião</th>
+                  <th style={{ width: "47%" }}>Descrição da Solicitação / Ajuste de Sistema</th>
+                  <th style={{ width: "17%" }}>Módulo</th>
+                  <th style={{ width: "16%" }}>Homologação (ERP ⇄ Excel)</th>
                 </tr>
               </thead>
               <tbody>
-                {solicitacoesFiltradas.slice(0, 120).map(s => (
+                {solicitacoesFiltradas.map(s => (
                   <tr key={s.id}>
                     <td style={{ color: "#94a3b8", fontWeight: 700 }}>#{s.numero}</td>
                     <td style={{ whiteSpace: "nowrap", fontSize: 12 }}>{s.data_solicitacao}</td>
@@ -2095,7 +2696,7 @@ export default function App() {
                           showNotification(
                             `Ajuste #${s.numero} marcado como ${!s.concluido ? "Testado ☑️" : "Pendente"}${syncedMsg}!`
                           );
-                          fetchAll();
+                          fetchAll(dashOrigemFilter);
                         }}
                       >
                         {s.concluido ? "☑️ Testado" : "Marcar Testado"}
@@ -2110,14 +2711,24 @@ export default function App() {
       )}
 
       {/* =====================================================================
-          MODULE 5: PERGUNTAS ABERTAS (docs/PERGUNTAS_ABERTAS.md)
+          MODULE 5: REGRAS DE NEGÓCIO & DÚVIDAS DA ABA 2H (docs/PERGUNTAS_ABERTAS.md)
          ===================================================================== */}
       {activeModule === "perguntas" && (
         <main className="page-container">
-          <h1 className="page-title">Perguntas Abertas do Financeiro (docs/PERGUNTAS_ABERTAS.md)</h1>
-          <p className="page-subtitle">
-            Enquanto não houver resposta definitiva do Financeiro, cada item opera como parâmetro configurável no sistema.
-          </p>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
+            <div>
+              <h1 className="page-title">Regras de Sistema & Dúvidas da Aba 2H (Financeiro / Guilherme)</h1>
+              <p className="page-subtitle" style={{ marginBottom: 0 }}>
+                Definições pendentes na aba 2H da Planilha Financeiro que parametrizam o cálculo de taxas, borderô, split 80/20 e dupla entrada.
+              </p>
+            </div>
+            <button
+              className="btn-emerald"
+              onClick={() => setActiveModule("financeiro")}
+            >
+              <Landmark size={14} /> Abrir Simulador Contábil & Taxas (Fase 2)
+            </button>
+          </div>
 
           {perguntas.map(q => (
             <div key={q.id} className="panel">
@@ -2132,7 +2743,7 @@ export default function App() {
               </div>
               <div style={{ fontWeight: 600, marginBottom: 4 }}>{q.pergunta}</div>
               <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 10 }}>
-                Origem: {q.origem} • Parâmetro atual no código: <strong>{q.parametro_atual}</strong>
+                Origem: {q.origem} • Parâmetro atual no sistema: <strong>{q.parametro_atual}</strong>
               </div>
               <div className="form-row">
                 <input
@@ -2148,7 +2759,7 @@ export default function App() {
                         body: JSON.stringify({ status: "Decidido", decisao: e.target.value })
                       });
                       showNotification(`Decisão ${q.codigo} salva e auditada!`);
-                      fetchAll();
+                      fetchAll(dashOrigemFilter);
                     }
                   }}
                 />

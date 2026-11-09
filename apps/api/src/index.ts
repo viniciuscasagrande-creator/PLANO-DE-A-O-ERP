@@ -203,23 +203,35 @@ export async function buildServer() {
       plano: string;
       prioridade: string;
       status: string;
+      status_original: string | null;
       origem_planilha: string;
+      aba_origem: string;
+      linha_planilha: number | null;
+      etapa_teste: string;
+      tarefas_programadas: number;
+      tarefas_realizadas: number;
       nao_resolvido: boolean;
+      how: string | null;
       fim_planejado: string | null;
       area_nome: string | null;
       who_nome: string | null;
     }>(`
-      SELECT p.id, p.plano, p.prioridade, p.status, p.origem_planilha, p.nao_resolvido,
+      SELECT p.id, p.plano, p.prioridade, p.status, p.status_original,
+             p.origem_planilha, p.aba_origem, p.linha_planilha, p.etapa_teste,
+             p.tarefas_programadas, p.tarefas_realizadas, p.nao_resolvido, p.how,
              p.fim_planejado::text as fim_planejado,
              a.nome as area_nome, pe.nome as who_nome
       FROM plano_acao p
       LEFT JOIN areas a ON a.id = p.area_id
       LEFT JOIN pessoas pe ON pe.id = p.who_id
       ${where5w}
-      ORDER BY p.id ASC
+      ORDER BY p.aba_origem ASC, p.linha_planilha ASC, p.id ASC
     `, params5w);
 
     const planos = planosRes.rows;
+    const itens5W = planos.filter(p => p.aba_origem === "5W");
+    const itens2H = planos.filter(p => p.aba_origem === "2H");
+
     const totalPlanos = planos.length;
     const concluidos = planos.filter(p => p.status === "Concluído").length;
     const emAndamento = planos.filter(p => p.status === "Em andamento").length;
@@ -227,16 +239,51 @@ export async function buildServer() {
     const naoIniciados = planos.filter(p => p.status === "Não iniciado").length;
     const naoResolvidos = planos.filter(p => p.nao_resolvido).length;
 
+    // Exact 5W vs 2H Breakdown matching the DASH sheets of both spreadsheets
+    const total5W = itens5W.length;
+    const concluidos5W = itens5W.filter(p => p.status === "Concluído").length;
+    const total2H = itens2H.length;
+    const concluidos2H = itens2H.filter(p => p.status === "Concluído").length;
+
+    // Funil de Homologação e Testes na Aba 2H (TESTE OK vs TESTAR DISK vs GUILHERME vs NÃO RESOLVIDO)
+    const testeOkCount = itens2H.filter(p => p.etapa_teste === "TESTE OK").length;
+    const testarDiskCount = itens2H.filter(p => p.etapa_teste === "TESTAR DISK").length;
+    const guilherme2HCount = itens2H.filter(p => p.etapa_teste === "GUILHERME").length;
+    const estrategico2HCount = itens2H.filter(p => p.etapa_teste === "ESTRATEGICO").length;
+
     const byAreaMap: Record<string, { area: string; total: number; concluido: number; andamento: number; atrasado: number; naoIniciado: number; naoResolvido: number }> = {};
     const byWhoMap: Record<string, { responsavel: string; total: number; concluido: number; andamento: number; atrasado: number; naoResolvido: number }> = {};
     const byPriorityMap: Record<string, { prioridade: string; total: number; concluido: number; pendente: number }> = {};
-    const byOrigemMap: Record<string, { origem: string; total: number; concluido: number; andamento: number; atrasado: number; naoIniciado: number; naoResolvido: number }> = {
-      FINANCEIRO: { origem: "Planilha Financeiro (Karine)", total: 0, concluido: 0, andamento: 0, atrasado: 0, naoIniciado: 0, naoResolvido: 0 },
-      SUPORTE: { origem: "Planilha Suporte & Riscos (Vinicius)", total: 0, concluido: 0, andamento: 0, atrasado: 0, naoIniciado: 0, naoResolvido: 0 }
+    const byOrigemMap: Record<string, {
+      origem: string;
+      total: number;
+      concluido: number;
+      andamento: number;
+      atrasado: number;
+      naoIniciado: number;
+      naoResolvido: number;
+      total5W: number;
+      concluidos5W: number;
+      total2H: number;
+      concluidos2H: number;
+      testeOk: number;
+      testarDisk: number;
+      comGuilherme: number;
+    }> = {
+      FINANCEIRO: {
+        origem: "Planilha 5W2H Financeiro (Karine)",
+        total: 0, concluido: 0, andamento: 0, atrasado: 0, naoIniciado: 0, naoResolvido: 0,
+        total5W: 0, concluidos5W: 0, total2H: 0, concluidos2H: 0, testeOk: 0, testarDisk: 0, comGuilherme: 0
+      },
+      SUPORTE: {
+        origem: "Planilha 5W2H Suporte & Riscos (Vinicius)",
+        total: 0, concluido: 0, andamento: 0, atrasado: 0, naoIniciado: 0, naoResolvido: 0,
+        total5W: 0, concluidos5W: 0, total2H: 0, concluidos2H: 0, testeOk: 0, testarDisk: 0, comGuilherme: 0
+      }
     };
 
     for (const p of planos) {
-      const a = p.area_nome || "GERAL";
+      const a = p.area_nome || "SUPORTE";
       if (!byAreaMap[a]) byAreaMap[a] = { area: a, total: 0, concluido: 0, andamento: 0, atrasado: 0, naoIniciado: 0, naoResolvido: 0 };
       byAreaMap[a].total++;
       if (p.status === "Concluído") byAreaMap[a].concluido++;
@@ -266,6 +313,17 @@ export async function buildServer() {
       else if (p.status === "Não iniciado") byOrigemMap[origKey].naoIniciado++;
       else byOrigemMap[origKey].andamento++;
       if (p.nao_resolvido) byOrigemMap[origKey].naoResolvido++;
+
+      if (p.aba_origem === "5W") {
+        byOrigemMap[origKey].total5W++;
+        if (p.status === "Concluído") byOrigemMap[origKey].concluidos5W++;
+      } else {
+        byOrigemMap[origKey].total2H++;
+        if (p.status === "Concluído") byOrigemMap[origKey].concluidos2H++;
+        if (p.etapa_teste === "TESTE OK") byOrigemMap[origKey].testeOk++;
+        if (p.etapa_teste === "TESTAR DISK") byOrigemMap[origKey].testarDisk++;
+        if (p.etapa_teste === "GUILHERME") byOrigemMap[origKey].comGuilherme++;
+      }
     }
 
     // Solicitações da Plataforma por módulo e por mês/data
@@ -317,6 +375,16 @@ export async function buildServer() {
         naoIniciados,
         naoResolvidos,
         pctConcluido: totalPlanos ? Math.round((concluidos / totalPlanos) * 100) : 0,
+        total5W,
+        concluidos5W,
+        pct5W: total5W ? Math.round((concluidos5W / total5W) * 100) : 0,
+        total2H,
+        concluidos2H,
+        pct2H: total2H ? Math.round((concluidos2H / total2H) * 100) : 0,
+        testeOkCount,
+        testarDiskCount,
+        guilherme2HCount,
+        estrategico2HCount,
         reqTotal,
         reqDone,
         reqPending: reqTotal - reqDone,
@@ -325,7 +393,19 @@ export async function buildServer() {
         perguntasDecididas,
         perguntasPendentes: totalPerguntas - perguntasDecididas
       },
-      atrasadosDestaque: planos.filter(p => p.status === "Atrasado" || p.nao_resolvido).slice(0, 14),
+      funil2H: [
+        { etapa: "TESTE OK (Homologado Disk)", total: testeOkCount, cor: "#10b981", desc: "Testado e validado na aba 2H" },
+        { etapa: "TESTAR DISK (Fila de Homologação)", total: testarDiskCount, cor: "#f59e0b", desc: "Entregue pelo Guilherme, aguardando teste da Disk" },
+        { etapa: "Com Guilherme (Desenvolvimento)", total: guilherme2HCount, cor: "#3b82f6", desc: "Em desenvolvimento / ajuste técnico" },
+        { etapa: "Ações de Estrutura / Gestão", total: estrategico2HCount, cor: "#a855f7", desc: "Processos internos, equipe e diretoria" },
+        { etapa: "NÃO RESOLVIDO (Bloqueado)", total: naoResolvidos, cor: "#ef4444", desc: "Trava técnica ou decisão pendente" }
+      ],
+      plan2Oficial: [
+        { setor: "Setor de Suporte", quantidade: 288, percentual: 55.5, cor: "#10b981" },
+        { setor: "Outros Setores (Comercial, Site, Organizador, MKT, PDV)", quantidade: 202, percentual: 38.9, cor: "#3b82f6" },
+        { setor: "Setor Financeiro (Borderô, Taxas, Contas)", quantidade: 29, percentual: 5.6, cor: "#f59e0b" }
+      ],
+      atrasadosDestaque: planos.filter(p => p.status === "Atrasado" || p.nao_resolvido || p.etapa_teste === "TESTAR DISK").slice(0, 18),
       porArea: Object.values(byAreaMap),
       porResponsavel: Object.values(byWhoMap),
       porPrioridade: Object.values(byPriorityMap),
@@ -526,13 +606,15 @@ export async function buildServer() {
     const res = await db.query(`
       SELECT p.id, p.plano, p.prioridade, p.what, p.why, p.who_id, p.area_id, p.onde,
              p.inicio::text as inicio, p.prazo_dias, p.fim_planejado::text as fim_planejado,
-             p.fim_real::text as fim_real, p.how, p.how_much_centavos, p.status,
-             p.origem_planilha, p.categoria, p.nao_resolvido, p.observacao_resolucao,
+             p.fim_real::text as fim_real, p.how, p.how_much_centavos, p.status, p.status_original,
+             p.origem_planilha, p.aba_origem, p.linha_planilha, p.etapa_teste,
+             p.tarefas_programadas, p.tarefas_realizadas,
+             p.categoria, p.nao_resolvido, p.observacao_resolucao,
              a.nome as area_nome, pe.nome as who_nome
       FROM plano_acao p
       LEFT JOIN areas a ON a.id = p.area_id
       LEFT JOIN pessoas pe ON pe.id = p.who_id
-      ORDER BY p.nao_resolvido DESC, p.id ASC
+      ORDER BY p.nao_resolvido DESC, p.aba_origem ASC, p.linha_planilha ASC, p.id ASC
     `);
     return res.rows.map(r => ({
       ...r,
@@ -609,20 +691,30 @@ export async function buildServer() {
       const whoId = body.who_id !== undefined ? body.who_id : prev.who_id;
       const areaId = body.area_id !== undefined ? body.area_id : prev.area_id;
       const onde = body.onde ?? prev.onde;
-      const how = body.how ?? prev.how;
+      const etapaTeste = body.etapa_teste ?? prev.etapa_teste;
+      const how = body.how ?? (body.etapa_teste ? body.etapa_teste : prev.how);
       const fimPlanejado = body.fim_planejado ?? prev.fim_planejado;
-      const status = body.status ?? prev.status;
+      const status = body.status ?? (body.etapa_teste === "TESTE OK" ? "Concluído" : prev.status);
       const observacao = body.observacao_resolucao ?? prev.observacao_resolucao;
       const naoResolvido = body.nao_resolvido !== undefined ? Boolean(body.nao_resolvido) : prev.nao_resolvido;
       const fimReal = status === "Concluído" ? new Date().toISOString().slice(0, 10) : prev.fim_real;
+      const tarefasReal = body.tarefas_realizadas !== undefined
+        ? Number(body.tarefas_realizadas)
+        : status === "Concluído"
+        ? Number(prev.tarefas_programadas || 1)
+        : prev.tarefas_realizadas;
 
       const afterRes = await db.query(
         `UPDATE plano_acao
          SET plano = $1, prioridade = $2, what = $3, why = $4, who_id = $5, area_id = $6,
              onde = $7, how = $8, fim_planejado = $9, status = $10, observacao_resolucao = $11,
-             nao_resolvido = $12, fim_real = $13
-         WHERE id = $14 RETURNING *`,
-        [plano, prioridade, what, why, whoId, areaId, onde, how, fimPlanejado, status, observacao, naoResolvido, fimReal, id]
+             nao_resolvido = $12, fim_real = $13, etapa_teste = $14, tarefas_realizadas = $15
+         WHERE id = $16 RETURNING *`,
+        [
+          plano, prioridade, what, why, whoId, areaId,
+          onde, how, fimPlanejado, status, observacao,
+          naoResolvido, fimReal, etapaTeste, tarefasReal, id
+        ]
       );
 
       await recordAudit({
@@ -649,6 +741,45 @@ export async function buildServer() {
     `);
     return res.rows;
   });
+
+  app.post(
+    "/api/solicitacoes",
+    { preHandler: requireRoles(["admin", "financeiro", "suporte"]) },
+    async (req, reply) => {
+      const user = (req as any).currentUser;
+      const db = await getDb();
+      const body = req.body as {
+        descricao?: string;
+        modulo?: string;
+        setor?: string;
+        data_solicitacao?: string;
+      };
+      if (!body.descricao || !body.descricao.trim()) {
+        return reply.status(400).send({ error: "Informe a descrição da solicitação de ajuste." });
+      }
+      const maxRes = await db.query<{ m: number }>("SELECT COALESCE(MAX(numero), 0) as m FROM solicitacoes_plataforma");
+      const nextNum = Number(maxRes.rows[0].m) + 1;
+      const dataSol = body.data_solicitacao || new Date().toISOString().slice(0, 10);
+      const modulo = body.modulo || "Eventos & Pedidos";
+      const setor = body.setor || "SUPORTE";
+
+      const ins = await db.query(
+        `INSERT INTO solicitacoes_plataforma (numero, data_solicitacao, descricao, setor, modulo, concluido, homologado_plan3)
+         VALUES ($1, $2, $3, $4, $5, false, false) RETURNING *`,
+        [nextNum, dataSol, body.descricao.trim(), setor, modulo]
+      );
+
+      await recordAudit({
+        pessoa_id: user.id,
+        acao: "CRIAR_SOLICITACAO_AJUSTE",
+        entidade: "solicitacoes_plataforma",
+        entidade_id: ins.rows[0].id,
+        depois: ins.rows[0]
+      });
+
+      return ins.rows[0];
+    }
+  );
 
   app.put(
     "/api/solicitacoes/:id",

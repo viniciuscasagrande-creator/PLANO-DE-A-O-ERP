@@ -11,7 +11,6 @@ const rootDir = path.resolve(__dirname, "..", "..", "..", "..", "..");
 const DATA_DIR = path.join(rootDir, "data");
 const VINA_DIR = "d:\\backupwindows\\VINA";
 
-// Track last known modification timestamps to detect external Excel saves
 let lastKnownMtimeMs = 0;
 let lastWriteByErpMs = 0;
 let lastSyncTimestamp: string = new Date().toISOString();
@@ -47,10 +46,23 @@ export function normalizeStatus(raw: any): "Não iniciado" | "Em andamento" | "C
   if (s.includes("conclu") || s === "realizado" || s.includes("feito")) return "Concluído";
   if (s.includes("atrasad")) return "Atrasado";
   if (s.includes("andamento")) return "Em andamento";
-  if (s.includes("não realizado") || s.includes("nao realizado") || s.includes("não iniciado") || s.includes("nao iniciado")) {
+  if (
+    s.includes("não realizado") ||
+    s.includes("nao realizado") ||
+    s.includes("não iniciado") ||
+    s.includes("nao iniciado")
+  ) {
     return "Não iniciado";
   }
   return "Em andamento";
+}
+
+export function classifyEtapaTeste(howRaw: string, ondeRaw?: string): "TESTE OK" | "TESTAR DISK" | "GUILHERME" | "ESTRATEGICO" {
+  const h = `${cleanCell(howRaw)} ${cleanCell(ondeRaw || "")}`.toUpperCase();
+  if (h.includes("TESTE OK")) return "TESTE OK";
+  if (h.includes("TESTAR DISK")) return "TESTAR DISK";
+  if (h.includes("GUILHERME") || h.includes("GULHERME")) return "GUILHERME";
+  return "ESTRATEGICO";
 }
 
 function sheetToRowObjects(wb: XLSX.WorkBook, sheetName: string): Record<string, any>[] {
@@ -85,10 +97,6 @@ function readWorkbookSafe(filePath: string): XLSX.WorkBook | null {
   }
 }
 
-/**
- * Resolves all candidate paths for a spreadsheet across both `data/` and `d:\backupwindows\VINA`,
- * picking the most recently modified file when reading, and returning all existing targets when writing.
- */
 function resolveSpreadsheetCandidates(names: string[], customDataDir?: string): {
   newestPath: string | null;
   allExistingPaths: string[];
@@ -108,7 +116,7 @@ function resolveSpreadsheetCandidates(names: string[], customDataDir?: string): 
             existing.push({ path: full, mtimeMs: stat.mtimeMs });
           }
         } catch {
-          // ignore stat errors
+          // ignore
         }
       }
     }
@@ -142,8 +150,10 @@ export function getSyncState() {
 }
 
 /**
- * Reads spreadsheets from disk (`data/` or `d:\backupwindows\VINA`, picking whichever was saved most recently)
- * and inserts OR updates records in PostgreSQL (True Spreadsheet -> ERP Sync).
+ * Row-accurate Spreadsheet -> PostgreSQL Sync:
+ * Imports/updates every single row from `5W` (38 Financeiro + 25 Suporte = 63 rows)
+ * and every single row from `2H` (34 Financeiro + 168 Suporte = 202 rows),
+ * plus `EXE` task counters and the 445 requests from `datas das solicitaçoes e ajustes.xlsx`.
  */
 export async function importSpreadsheets(customDataDir?: string): Promise<ImportReport> {
   const finCand = resolveSpreadsheetCandidates(
@@ -178,7 +188,7 @@ export async function importSpreadsheets(customDataDir?: string): Promise<Import
   const defaultHash = await bcrypt.hash("disk123", 8);
 
   await withTransaction(async tx => {
-    // 1. Base areas + CAD_a from both spreadsheets
+    // 1. Base areas + CAD_a
     const baseAreas = ["SUPORTE", "DIRETORIA", "FINANCEIRO", "SAC", "ESTORNO", "COMERCIAL", "MKT"];
     for (const nome of baseAreas) {
       await tx.query("INSERT INTO areas (nome) VALUES ($1) ON CONFLICT (nome) DO NOTHING", [nome]);
@@ -204,7 +214,7 @@ export async function importSpreadsheets(customDataDir?: string): Promise<Import
     const areaMap = new Map<string, number>();
     for (const a of areasRes.rows) areaMap.set(a.nome.toUpperCase(), a.id);
 
-    // 2. Ensure Default People + CAD_f from both spreadsheets
+    // 2. Default People + CAD_f
     const defaultPeople = [
       {
         nome: "NAILA LONGAS GARCIA",
@@ -327,7 +337,7 @@ export async function importSpreadsheets(customDataDir?: string): Promise<Import
     const personMap = new Map<string, number>();
     for (const p of peopleRes.rows) personMap.set(p.nome.toUpperCase(), p.id);
 
-    // 3. Ensure Default Producer & "Evento exemplo"
+    // 3. Default Producer & Evento (if empty)
     const prodCount = await tx.query<{ c: string }>("SELECT COUNT(*) as c FROM produtores");
     if (Number(prodCount.rows[0].c) === 0) {
       const p1 = await tx.query<{ id: number }>(
@@ -350,52 +360,43 @@ export async function importSpreadsheets(customDataDir?: string): Promise<Import
       );
     }
 
-    // 4. Upsert Plano de Ação (5W + 2H) — updates existing items if changed in Excel, inserts new ones!
+    // 4. Clean up legacy pre-004 rows where linha_planilha IS NULL (one-time transition to exact row-by-row sync)
+    await tx.query("DELETE FROM plano_acao WHERE linha_planilha IS NULL AND origem_planilha != 'MANUAL'");
+
     const existingPlansRes = await tx.query<{
       id: number;
-      plano: string;
       origem_planilha: string;
-      status: string;
-      nao_resolvido: boolean;
-    }>("SELECT id, plano, origem_planilha, status, nao_resolvido FROM plano_acao ORDER BY id ASC");
+      aba_origem: string;
+      linha_planilha: number;
+    }>("SELECT id, origem_planilha, aba_origem, linha_planilha FROM plano_acao WHERE linha_planilha IS NOT NULL");
 
-    const planLookup = new Map<string, { id: number; status: string; nao_resolvido: boolean }>();
+    const rowLookup = new Map<string, number>();
     for (const ep of existingPlansRes.rows) {
-      const key = `${ep.origem_planilha.replace("_2H", "")}::${cleanCell(ep.plano).toLowerCase()}`;
-      if (!planLookup.has(key)) {
-        planLookup.set(key, { id: ep.id, status: ep.status, nao_resolvido: ep.nao_resolvido });
-      }
+      rowLookup.set(`${ep.origem_planilha}::${ep.aba_origem}::${ep.linha_planilha}`, ep.id);
     }
 
-    const syncWorkbook5W2H = async (wb: XLSX.WorkBook | null, origem: string, filePath: string | null) => {
+    const syncWorkbookExact = async (wb: XLSX.WorkBook | null, origem: "FINANCEIRO" | "SUPORTE", filePath: string | null) => {
       if (!wb) return;
       if (filePath) report.arquivosLidos.push(path.basename(filePath));
+
       const rows5W = sheetToRowObjects(wb, "5W");
       const rows2H = sheetToRowObjects(wb, "2H");
+      const rowsEXE = sheetToRowObjects(wb, "EXE");
 
-      const map2H = new Map<
-        string,
-        { how: string; howMuchCentavos: number; naoResolvido: boolean; status2H: string; fimMax: string | null }
-      >();
-      for (const r2 of rows2H) {
-        if (r2._r <= 5) continue;
-        const pTitle = cleanCell(r2.C);
-        if (!pTitle) {
-          report.planosRejeitados++;
-          continue;
-        }
-        const how = cleanCell(r2.D);
-        const rawHowMuch = cleanCell(r2.E);
-        const naoResolvido = rawHowMuch.toUpperCase().includes("NÃO RESOLVIDO");
-        const numVal = Number(rawHowMuch);
-        const howMuchCentavos = !Number.isNaN(numVal) && numVal > 0 ? Math.round(numVal * 100) : 0;
-        const fimMax = excelSerialToISO(r2.F);
-        const status2H = cleanCell(r2.G);
-        map2H.set(pTitle.toLowerCase(), { how, howMuchCentavos, naoResolvido, status2H, fimMax });
+      // Map EXE by plan title to enrich 5W rows with Tarefas Programadas / Realizadas
+      const exeMap = new Map<string, { prog: number; real: number; statusExe: string }>();
+      for (const re of rowsEXE) {
+        if (re._r <= 4) continue;
+        const t = cleanCell(re.C).toLowerCase();
+        if (!t || t === "planos de ação") continue;
+        exeMap.set(t, {
+          prog: Number(re.D) || 1,
+          real: Number(re.E) || 0,
+          statusExe: cleanCell(re.G)
+        });
       }
 
-      const matched2HKeys = new Set<string>();
-
+      // 4A. Import/Update every row of 5W (38 Financeiro + 25 Suporte = 63 rows)
       for (const r of rows5W) {
         if (r._r <= 5) continue;
         const plano = cleanCell(r.C);
@@ -419,59 +420,24 @@ export async function importSpreadsheets(customDataDir?: string): Promise<Import
         const fimPlanejado = excelSerialToISO(r.K) || "2026-03-03";
         const fimReal = excelSerialToISO(r.L);
         const onde = cleanCell(r.M) || "DISK";
+        const statusRaw = cleanCell(r.P) || exeMap.get(title.toLowerCase())?.statusExe || "Em andamento";
+        const status = normalizeStatus(statusRaw);
+        const exeInfo = exeMap.get(title.toLowerCase());
+        const tProg = exeInfo?.prog ?? 1;
+        const tReal = exeInfo?.real ?? (status === "Concluído" ? 1 : 0);
+        const etapaTeste = classifyEtapaTeste(onde, onde);
 
-        const m2 = map2H.get(title.toLowerCase());
-        if (m2) matched2HKeys.add(title.toLowerCase());
+        const rowKey = `${origem}::5W::${r._r}`;
+        const existingId = rowLookup.get(rowKey);
 
-        // If 5W has real end date or P status, normalize it; if 2H was explicitly marked Realizado, honor it
-        let status = normalizeStatus(r.P);
-        if (fimReal) status = "Concluído";
-        else if (m2 && cleanCell(m2.status2H).toLowerCase() === "realizado" && status !== "Atrasado") {
-          // keep 5W status unless 5W is empty
-          if (!r.P) status = "Concluído";
-        }
-
-        const howVal = m2?.how || (onde === "Guilherme" ? "Guilherme" : "Equipe Disk");
-        const howMuchVal = m2?.howMuchCentavos || 0;
-        const naoResolvidoVal = m2?.naoResolvido || false;
-
-        const lookupKey = `${origem}::${title.toLowerCase()}`;
-        const existingItem = planLookup.get(lookupKey);
-
-        if (existingItem) {
+        if (existingId) {
           await tx.query(
             `UPDATE plano_acao
-             SET prioridade = $1, what = $2, why = $3, who_id = $4, area_id = $5,
-                 onde = $6, inicio = $7, prazo_dias = $8, fim_planejado = $9, fim_real = $10,
-                 how = $11, how_much_centavos = $12, status = $13, nao_resolvido = $14
-             WHERE id = $15`,
-            [
-              prioridade,
-              what || title,
-              why,
-              whoId,
-              areaId,
-              onde,
-              inicio,
-              prazoDias,
-              fimPlanejado,
-              fimReal,
-              howVal,
-              howMuchVal,
-              status,
-              naoResolvidoVal,
-              existingItem.id
-            ]
-          );
-          report.planosAtualizados++;
-        } else {
-          const ins = await tx.query<{ id: number }>(
-            `INSERT INTO plano_acao (
-               plano, prioridade, what, why, who_id, area_id, onde,
-               inicio, prazo_dias, fim_planejado, fim_real,
-               how, how_much_centavos, status, origem_planilha, categoria, nao_resolvido
-             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
-             RETURNING id`,
+             SET plano = $1, prioridade = $2, what = $3, why = $4, who_id = $5, area_id = $6,
+                 onde = $7, inicio = $8, prazo_dias = $9, fim_planejado = $10, fim_real = $11,
+                 how = $12, status = $13, status_original = $14, etapa_teste = $15,
+                 tarefas_programadas = $16, tarefas_realizadas = $17
+             WHERE id = $18`,
             [
               title,
               prioridade,
@@ -484,56 +450,100 @@ export async function importSpreadsheets(customDataDir?: string): Promise<Import
               prazoDias,
               fimPlanejado,
               fimReal,
-              howVal,
-              howMuchVal,
+              onde,
               status,
-              origem,
-              origem === "FINANCEIRO" ? "Financeiro & Taxas" : "Suporte, Riscos & Compliance",
-              naoResolvidoVal
+              statusRaw,
+              etapaTeste,
+              tProg,
+              tReal,
+              existingId
             ]
           );
-          planLookup.set(lookupKey, { id: ins.rows[0].id, status, nao_resolvido: naoResolvidoVal });
+          report.planosAtualizados++;
+        } else {
+          await tx.query(
+            `INSERT INTO plano_acao (
+               plano, prioridade, what, why, who_id, area_id, onde,
+               inicio, prazo_dias, fim_planejado, fim_real, how, how_much_centavos,
+               status, status_original, origem_planilha, aba_origem, linha_planilha,
+               categoria, nao_resolvido, etapa_teste, tarefas_programadas, tarefas_realizadas
+             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,0,$13,$14,$15,'5W',$16,$17,false,$18,$19,$20)`,
+            [
+              title,
+              prioridade,
+              what || title,
+              why,
+              whoId,
+              areaId,
+              onde,
+              inicio,
+              prazoDias,
+              fimPlanejado,
+              fimReal,
+              onde,
+              status,
+              statusRaw,
+              origem,
+              r._r,
+              origem === "FINANCEIRO" ? "Plano 5W Financeiro" : "Plano 5W Suporte & Riscos",
+              etapaTeste,
+              tProg,
+              tReal
+            ]
+          );
           report.planosImportados++;
         }
       }
 
-      // Standalone 2H tasks
+      // 4B. Import/Update every row of 2H (34 Financeiro + 168 Suporte = 202 rows)
       for (const r2 of rows2H) {
         if (r2._r <= 5) continue;
         const pTitle = cleanCell(r2.C);
-        if (!pTitle) continue;
-        if (matched2HKeys.has(pTitle.toLowerCase())) continue;
-
-        const how = cleanCell(r2.D) || "Guilherme";
+        if (!pTitle || pTitle === "Plano de Ação") {
+          report.planosRejeitados++;
+          continue;
+        }
+        const how = cleanCell(r2.D) || (origem === "FINANCEIRO" ? "Guilherme" : "TESTAR DISK");
         const rawHowMuch = cleanCell(r2.E);
         const naoResolvido = rawHowMuch.toUpperCase().includes("NÃO RESOLVIDO");
         const numVal = Number(rawHowMuch);
         const howMuchCentavos = !Number.isNaN(numVal) && numVal > 0 ? Math.round(numVal * 100) : 0;
         const fimPlanejado = excelSerialToISO(r2.F) || "2026-02-15";
-        const status = normalizeStatus(r2.G);
+        const statusRaw = cleanCell(r2.G) || "Não Realizado";
+        const status = normalizeStatus(statusRaw);
         const areaName = cleanCell(r2.H).toUpperCase() || (origem === "FINANCEIRO" ? "FINANCEIRO" : "SUPORTE");
         const areaId = areaMap.get(areaName) || areaMap.get("SUPORTE") || null;
+        const etapaTeste = classifyEtapaTeste(how);
         const whoId =
           personMap.get(
-            how.toUpperCase().includes("GUILHERME") || how.toUpperCase().includes("GULHERME")
+            etapaTeste === "GUILHERME"
               ? "GUILHERME"
               : origem === "FINANCEIRO"
               ? "KARINE SANTOS"
               : "VINICIUS CASAGRANDE"
           ) || null;
 
-        const lookupKey = `${origem}::${pTitle.toLowerCase()}`;
-        const existingItem = planLookup.get(lookupKey);
+        const prioridade = naoResolvido
+          ? "Muito Urgente"
+          : etapaTeste === "TESTAR DISK"
+          ? "Urgente"
+          : "Normal";
 
-        if (existingItem) {
+        const rowKey = `${origem}_2H::2H::${r2._r}`;
+        const existingId = rowLookup.get(rowKey);
+
+        if (existingId) {
           await tx.query(
             `UPDATE plano_acao
-             SET prioridade = $1, who_id = $2, area_id = $3, onde = $4,
-                 fim_planejado = $5, how = $6, how_much_centavos = $7,
-                 status = $8, nao_resolvido = $9
-             WHERE id = $10`,
+             SET plano = $1, prioridade = $2, what = $3, who_id = $4, area_id = $5,
+                 onde = $6, fim_planejado = $7, how = $8, how_much_centavos = $9,
+                 status = $10, status_original = $11, nao_resolvido = $12, etapa_teste = $13,
+                 tarefas_programadas = 1, tarefas_realizadas = $14
+             WHERE id = $15`,
             [
-              naoResolvido ? "Muito Urgente" : "Urgente",
+              pTitle,
+              prioridade,
+              pTitle,
               whoId,
               areaId,
               how,
@@ -541,46 +551,50 @@ export async function importSpreadsheets(customDataDir?: string): Promise<Import
               how,
               howMuchCentavos,
               status,
+              statusRaw,
               naoResolvido,
-              existingItem.id
+              etapaTeste,
+              status === "Concluído" ? 1 : 0,
+              existingId
             ]
           );
           report.planosAtualizados++;
         } else {
-          const ins = await tx.query<{ id: number }>(
+          await tx.query(
             `INSERT INTO plano_acao (
                plano, prioridade, what, why, who_id, area_id, onde,
                inicio, prazo_dias, fim_planejado, how, how_much_centavos,
-               status, origem_planilha, categoria, nao_resolvido
-             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
-             RETURNING id`,
+               status, status_original, origem_planilha, aba_origem, linha_planilha,
+               categoria, nao_resolvido, etapa_teste, tarefas_programadas, tarefas_realizadas
+             ) VALUES ($1,$2,$3,$4,$5,$6,$7,'2026-01-15',15,$8,$9,$10,$11,$12,$13,'2H',$14,$15,$16,$17,1,$18)`,
             [
               pTitle,
-              naoResolvido ? "Muito Urgente" : "Urgente",
+              prioridade,
               pTitle,
-              `Desdobramento 2H (${origem})`,
+              `Tarefa / Ajuste Técnico 2H (${origem})`,
               whoId,
               areaId,
               how,
-              "2026-01-15",
-              15,
               fimPlanejado,
               how,
               howMuchCentavos,
               status,
+              statusRaw,
               `${origem}_2H`,
-              "Desdobramento Técnico 2H",
-              naoResolvido
+              r2._r,
+              "Execução & Testes (Aba 2H)",
+              naoResolvido,
+              etapaTeste,
+              status === "Concluído" ? 1 : 0
             ]
           );
-          planLookup.set(lookupKey, { id: ins.rows[0].id, status, nao_resolvido: naoResolvido });
           report.planosImportados++;
         }
       }
     };
 
-    await syncWorkbook5W2H(wbFin, "FINANCEIRO", finCand.newestPath);
-    await syncWorkbook5W2H(wbSup, "SUPORTE", supCand.newestPath);
+    await syncWorkbookExact(wbFin, "FINANCEIRO", finCand.newestPath);
+    await syncWorkbookExact(wbSup, "SUPORTE", supCand.newestPath);
 
     // 5. Upsert Solicitações da Plataforma ('datas das solicitaçoes e ajustes.xlsx')
     if (wbReq && reqCand.newestPath) {
@@ -591,8 +605,8 @@ export async function importSpreadsheets(customDataDir?: string): Promise<Import
         if (r.A) plan3Set.add(cleanCell(r.A).toLowerCase());
       }
 
-      const existingReqsRes = await tx.query<{ id: number; numero: number; descricao: string }>(
-        "SELECT id, numero, descricao FROM solicitacoes_plataforma"
+      const existingReqsRes = await tx.query<{ id: number; numero: number }>(
+        "SELECT id, numero FROM solicitacoes_plataforma"
       );
       const reqByNum = new Map<number, number>();
       for (const er of existingReqsRes.rows) reqByNum.set(er.numero, er.id);
@@ -649,7 +663,12 @@ export async function importSpreadsheets(customDataDir?: string): Promise<Import
             ? "Tradução & UI"
             : "Eventos & Pedidos";
 
-        const setor = modulo === "Financeiro & Borderô" ? "FINANCEIRO" : "SUPORTE";
+        const setor =
+          modulo === "Financeiro & Borderô"
+            ? "FINANCEIRO"
+            : modulo === "Cupons & Promoções" || dLower.includes("banner") || dLower.includes("clube")
+            ? "COMERCIAL / MKT"
+            : "SUPORTE";
         const concluido = hasCheck || inPlan3;
 
         const existingId = reqByNum.get(num);
@@ -755,10 +774,6 @@ function escapeXml(str: string): string {
     .replace(/'/g, "&apos;");
 }
 
-/**
- * Patches specific cells inside an `.xlsx` file at the XML/ZIP level using `XLSX.CFB`
- * so that 100% of original Excel styles, colors, images, logos, drawings, and other sheets are preserved.
- */
 function patchExcelCellsNonDestructive(
   filePath: string,
   updatesBySheet: Record<string, { cellRef: string; value: string | number; keepFormula?: boolean }[]>
@@ -850,8 +865,7 @@ function patchExcelCellsNonDestructive(
 
 /**
  * ERP -> Spreadsheet Sync:
- * Updates a 5W2H item directly inside the corresponding Excel spreadsheet(s)
- * (`data/` and `d:\backupwindows\VINA\`) preserving 100% of formatting, formulas, and logos.
+ * Updates the exact row (`linha_planilha`) in `5W`, `EXE` or `2H` inside the Excel spreadsheet(s).
  */
 export async function syncPlanoAcaoToExcel(planoId: number): Promise<{ syncedFiles: string[]; lockedFiles: string[] }> {
   const db = await getDb();
@@ -862,20 +876,18 @@ export async function syncPlanoAcaoToExcel(planoId: number): Promise<{ syncedFil
     what: string;
     why: string;
     onde: string;
-    inicio: string;
-    prazo_dias: number;
-    fim_planejado: string;
-    fim_real: string | null;
     how: string;
     how_much_centavos: string;
     status: string;
     origem_planilha: string;
+    aba_origem: string;
+    linha_planilha: number | null;
     nao_resolvido: boolean;
+    etapa_teste: string;
     area_nome: string | null;
     who_nome: string | null;
   }>(
-    `SELECT p.*, p.inicio::text as inicio, p.fim_planejado::text as fim_planejado, p.fim_real::text as fim_real,
-            a.nome as area_nome, pe.nome as who_nome
+    `SELECT p.*, a.nome as area_nome, pe.nome as who_nome
      FROM plano_acao p
      LEFT JOIN areas a ON a.id = p.area_id
      LEFT JOIN pessoas pe ON pe.id = p.who_id
@@ -906,77 +918,65 @@ export async function syncPlanoAcaoToExcel(planoId: number): Promise<{ syncedFil
       const wb = readWorkbookSafe(filePath);
       if (!wb) continue;
 
-      const normTarget = cleanCell(item.plano).toLowerCase();
       const updatesBySheet: Record<string, { cellRef: string; value: string | number; keepFormula?: boolean }[]> = {
         "5W": [],
         EXE: [],
         "2H": []
       };
 
-      // 1. Locate in 5W sheet
-      const ws5 = wb.Sheets["5W"];
-      if (ws5) {
-        const range = XLSX.utils.decode_range(ws5["!ref"] || "A1:P60");
-        for (let R = 5; R <= range.e.r; ++R) {
-          const row1 = R + 1;
-          const cellC = ws5[XLSX.utils.encode_cell({ c: 2, r: R })];
-          const cellE = ws5[XLSX.utils.encode_cell({ c: 4, r: R })];
-          const cText = cleanCell(cellC?.v || cellE?.v).toLowerCase();
-          if (cText && cText === normTarget) {
-            updatesBySheet["5W"].push(
-              { cellRef: `C${row1}`, value: item.plano },
-              { cellRef: `D${row1}`, value: item.prioridade },
-              { cellRef: `E${row1}`, value: item.what || item.plano },
-              { cellRef: `P${row1}`, value: item.status, keepFormula: true }
-            );
-            if (item.why) updatesBySheet["5W"].push({ cellRef: `F${row1}`, value: item.why });
-            if (item.who_nome) updatesBySheet["5W"].push({ cellRef: `G${row1}`, value: item.who_nome });
-            if (item.area_nome) updatesBySheet["5W"].push({ cellRef: `H${row1}`, value: item.area_nome });
-            if (item.onde) updatesBySheet["5W"].push({ cellRef: `M${row1}`, value: item.onde });
-            break;
-          }
-        }
-      }
+      const normTarget = cleanCell(item.plano).toLowerCase();
 
-      // 2. Locate in EXE sheet
-      const wsExe = wb.Sheets["EXE"];
-      if (wsExe) {
-        const range = XLSX.utils.decode_range(wsExe["!ref"] || "A1:H60");
-        for (let R = 4; R <= range.e.r; ++R) {
-          const row1 = R + 1;
-          const cellC = wsExe[XLSX.utils.encode_cell({ c: 2, r: R })];
-          if (cleanCell(cellC?.v).toLowerCase() === normTarget) {
-            const doneTasks = item.status === "Concluído" ? 1 : item.status === "Em andamento" ? 0.5 : 0;
-            updatesBySheet.EXE.push(
-              { cellRef: `D${row1}`, value: 1 },
-              { cellRef: `E${row1}`, value: doneTasks },
-              { cellRef: `F${row1}`, value: doneTasks, keepFormula: true },
-              { cellRef: `G${row1}`, value: item.status, keepFormula: true }
-            );
-            break;
+      if (item.aba_origem === "2H") {
+        // Exact row in 2H
+        const row1 = item.linha_planilha;
+        if (row1 && row1 > 5) {
+          updatesBySheet["2H"].push(
+            { cellRef: `C${row1}`, value: item.plano },
+            { cellRef: `D${row1}`, value: item.how || item.etapa_teste },
+            { cellRef: `G${row1}`, value: item.status === "Concluído" ? "Realizado" : "Não Realizado" }
+          );
+          if (item.nao_resolvido) {
+            updatesBySheet["2H"].push({ cellRef: `E${row1}`, value: "NÃO RESOLVIDO" });
+          } else {
+            const cents = Number(item.how_much_centavos || 0);
+            updatesBySheet["2H"].push({ cellRef: `E${row1}`, value: cents / 100 });
           }
+          if (item.area_nome) updatesBySheet["2H"].push({ cellRef: `H${row1}`, value: item.area_nome });
         }
-      }
+      } else {
+        // Exact row in 5W + matching row in EXE
+        const row1 = item.linha_planilha;
+        if (row1 && row1 > 5) {
+          updatesBySheet["5W"].push(
+            { cellRef: `C${row1}`, value: item.plano },
+            { cellRef: `D${row1}`, value: item.prioridade },
+            { cellRef: `E${row1}`, value: item.what || item.plano },
+            { cellRef: `P${row1}`, value: item.status, keepFormula: true }
+          );
+          if (item.why) updatesBySheet["5W"].push({ cellRef: `F${row1}`, value: item.why });
+          if (item.who_nome) updatesBySheet["5W"].push({ cellRef: `G${row1}`, value: item.who_nome });
+          if (item.area_nome) updatesBySheet["5W"].push({ cellRef: `H${row1}`, value: item.area_nome });
+          if (item.onde) updatesBySheet["5W"].push({ cellRef: `M${row1}`, value: item.onde });
+        }
 
-      // 3. Locate in 2H sheet
-      const ws2 = wb.Sheets["2H"];
-      if (ws2) {
-        const range = XLSX.utils.decode_range(ws2["!ref"] || "A1:I200");
-        for (let R = 5; R <= range.e.r; ++R) {
-          const row1 = R + 1;
-          const cellC = ws2[XLSX.utils.encode_cell({ c: 2, r: R })];
-          if (cleanCell(cellC?.v).toLowerCase() === normTarget) {
-            if (item.how) updatesBySheet["2H"].push({ cellRef: `D${row1}`, value: item.how });
-            if (item.nao_resolvido) {
-              updatesBySheet["2H"].push({ cellRef: `E${row1}`, value: "NÃO RESOLVIDO" });
-            } else {
-              const cents = Number(item.how_much_centavos || 0);
-              updatesBySheet["2H"].push({ cellRef: `E${row1}`, value: cents / 100 });
+        const wsExe = wb.Sheets["EXE"];
+        if (wsExe) {
+          const range = XLSX.utils.decode_range(wsExe["!ref"] || "A1:H60");
+          for (let R = 4; R <= range.e.r; ++R) {
+            const exeRow = R + 1;
+            const cellC = wsExe[XLSX.utils.encode_cell({ c: 2, r: R })];
+            if (cleanCell(cellC?.v).toLowerCase() === normTarget) {
+              const cellD = wsExe[XLSX.utils.encode_cell({ c: 3, r: R })];
+              const prog = Number(cellD?.v) || 1;
+              const doneTasks = item.status === "Concluído" ? prog : item.status === "Em andamento" ? Math.max(1, Math.floor(prog / 2)) : 0;
+              const pct = prog > 0 ? doneTasks / prog : 0;
+              updatesBySheet.EXE.push(
+                { cellRef: `E${exeRow}`, value: doneTasks },
+                { cellRef: `F${exeRow}`, value: pct, keepFormula: true },
+                { cellRef: `G${exeRow}`, value: item.status, keepFormula: true }
+              );
+              break;
             }
-            const status2HStr = item.status === "Concluído" ? "Realizado" : "Não realizado";
-            updatesBySheet["2H"].push({ cellRef: `G${row1}`, value: status2HStr });
-            if (item.area_nome) updatesBySheet["2H"].push({ cellRef: `H${row1}`, value: item.area_nome });
-            break;
           }
         }
       }
@@ -996,9 +996,6 @@ export async function syncPlanoAcaoToExcel(planoId: number): Promise<{ syncedFil
   return { syncedFiles, lockedFiles };
 }
 
-/**
- * ERP -> Spreadsheet Sync for Solicitações da Plataforma ('datas das solicitaçoes e ajustes.xlsx')
- */
 export async function syncSolicitacaoToExcel(solicitacaoId: number): Promise<{ syncedFiles: string[]; lockedFiles: string[] }> {
   const db = await getDb();
   const res = await db.query<{
@@ -1054,14 +1051,9 @@ export async function syncSolicitacaoToExcel(solicitacaoId: number): Promise<{ s
   return { syncedFiles, lockedFiles };
 }
 
-/**
- * Background watcher that checks every 3 seconds if any spreadsheet in `data/` or `d:\backupwindows\VINA`
- * was modified externally in Excel, and automatically imports the changes into PostgreSQL.
- */
 export function startSpreadsheetWatcher() {
   setInterval(async () => {
     try {
-      // Avoid triggering immediately after ERP itself wrote the file
       if (Date.now() - lastWriteByErpMs < 2500) return;
 
       const finCand = resolveSpreadsheetCandidates([
@@ -1084,7 +1076,7 @@ export function startSpreadsheetWatcher() {
         );
       }
     } catch {
-      // Ignore transient read locks while Excel is actively saving
+      // Ignore transient read locks
     }
   }, 3000);
 }
