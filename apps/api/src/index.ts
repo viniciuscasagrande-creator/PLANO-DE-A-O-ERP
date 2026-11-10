@@ -991,6 +991,32 @@ export async function buildServer() {
     }
   );
 
+  app.post(
+    "/api/areas",
+    { preHandler: requireRoles(["admin", "financeiro"]) },
+    async (req, reply) => {
+      const user = (req as any).currentUser;
+      const body = req.body as { nome?: string };
+      if (!body.nome || !body.nome.trim()) {
+        return reply.status(400).send({ error: "Informe o nome da área/departamento." });
+      }
+      const db = await getDb();
+      const nomeNorm = body.nome.trim().toUpperCase();
+      const res = await db.query(
+        `INSERT INTO areas (nome) VALUES ($1) ON CONFLICT (nome) DO UPDATE SET nome = EXCLUDED.nome RETURNING *`,
+        [nomeNorm]
+      );
+      await recordAudit({
+        pessoa_id: user.id,
+        acao: "CRIAR_AREA",
+        entidade: "areas",
+        entidade_id: res.rows[0].id,
+        depois: res.rows[0]
+      });
+      return res.rows[0];
+    }
+  );
+
   app.get("/api/auditoria", async () => {
     const db = await getDb();
     const res = await db.query(`

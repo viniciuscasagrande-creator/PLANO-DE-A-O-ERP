@@ -229,7 +229,7 @@ export default function App() {
 
   // Filters for 5W2H, Homologação & Solicitações
   const [filtro5wOrigem, setFiltro5wOrigem] = useState("FINANCEIRO");
-  const [filtro5wAba, setFiltro5wAba] = useState<"ALL" | "5W" | "2H" | "EXE">("5W");
+  const [filtro5wAba, setFiltro5wAba] = useState<"ALL" | "5W" | "2H" | "EXE" | "REL">("5W");
   const [filtro5wStatus, setFiltro5wStatus] = useState("ALL");
   const [apenasNaoResolvidos, setApenasNaoResolvidos] = useState(false);
   const [busca5w, setBusca5w] = useState("");
@@ -240,14 +240,25 @@ export default function App() {
   const [buscaQa, setBuscaQa] = useState("");
 
   // Filters & Creation for Solicitações (Guilherme)
+  const [solSubTab, setSolSubTab] = useState<"PLAN1" | "PLAN2" | "PLAN3">("PLAN1");
   const [buscaSolicitacao, setBuscaSolicitacao] = useState("");
   const [filtroModuloSol, setFiltroModuloSol] = useState("ALL");
   const [filtroDataSol, setFiltroDataSol] = useState("ALL");
-  const [filtroStatusSol, setFiltroStatusSol] = useState<"ALL" | "PENDENTE" | "TESTADO" | "PLAN3">("ALL");
+  const [filtroStatusSol, setFiltroStatusSol] = useState<"ALL" | "PENDENTES" | "CONCLUIDOS" | "PLAN3">("ALL");
   const [showNewSolModal, setShowNewSolModal] = useState(false);
+  const [novaSolData, setNovaSolData] = useState(() => new Date().toISOString().slice(0, 10));
   const [novaSolDesc, setNovaSolDesc] = useState("");
-  const [novaSolModulo, setNovaSolModulo] = useState("Eventos & Pedidos");
+  const [novaSolModulo, setNovaSolModulo] = useState("Eventos & Ingressos");
   const [novaSolSetor, setNovaSolSetor] = useState("SUPORTE");
+
+  // Cadastros Base creation forms (CAD_f & CAD_a)
+  const [showNewPessoaModal, setShowNewPessoaModal] = useState(false);
+  const [novaPessoaNome, setNovaPessoaNome] = useState("");
+  const [novaPessoaAreaId, setNovaPessoaAreaId] = useState<number>(1);
+  const [novaPessoaEmail, setNovaPessoaEmail] = useState("");
+  const [novaPessoaTel, setNovaPessoaTel] = useState("");
+  const [novaPessoaPerfil, setNovaPessoaPerfil] = useState<Perfil>("suporte");
+  const [novaAreaNome, setNovaAreaNome] = useState("");
 
   // Bidirectional Sync & New 5W2H Task State
   const [lastSyncIso, setLastSyncIso] = useState<string>("");
@@ -642,15 +653,16 @@ export default function App() {
 
   const solicitacoesFiltradas = useMemo(() => {
     return solicitacoes.filter(s => {
+      if (solSubTab === "PLAN3" && !s.homologado_plan3) return false;
       if (filtroModuloSol !== "ALL" && s.modulo !== filtroModuloSol) return false;
       if (filtroDataSol !== "ALL" && s.data_solicitacao !== filtroDataSol) return false;
-      if (filtroStatusSol === "PENDENTE" && s.concluido) return false;
-      if (filtroStatusSol === "TESTADO" && !s.concluido) return false;
+      if (filtroStatusSol === "PENDENTES" && s.concluido) return false;
+      if (filtroStatusSol === "CONCLUIDOS" && !s.concluido) return false;
       if (filtroStatusSol === "PLAN3" && !s.homologado_plan3) return false;
       if (buscaSolicitacao && !s.descricao.toLowerCase().includes(buscaSolicitacao.toLowerCase())) return false;
       return true;
     });
-  }, [solicitacoes, filtroModuloSol, filtroDataSol, filtroStatusSol, buscaSolicitacao]);
+  }, [solicitacoes, solSubTab, filtroModuloSol, filtroDataSol, filtroStatusSol, buscaSolicitacao]);
 
   const modulosSolicitacao = useMemo(() => {
     return Array.from(new Set(solicitacoes.map(s => s.modulo))).sort();
@@ -669,7 +681,8 @@ export default function App() {
       body: JSON.stringify({
         descricao: novaSolDesc.trim(),
         modulo: novaSolModulo,
-        setor: novaSolSetor
+        setor: novaSolSetor,
+        data_solicitacao: novaSolData
       })
     });
     const data = await res.json();
@@ -681,6 +694,127 @@ export default function App() {
     setShowNewSolModal(false);
     showNotification(`Solicitação #${data.numero} registrada para o Guilherme!`);
     fetchAll(dashOrigemFilter);
+  }
+
+  async function handleCriarPessoa(e: React.FormEvent) {
+    e.preventDefault();
+    if (!novaPessoaNome.trim()) return;
+    const res = await fetch("/api/pessoas", {
+      method: "POST",
+      headers: apiHeaders(),
+      body: JSON.stringify({
+        nome: novaPessoaNome.trim(),
+        area_id: Number(novaPessoaAreaId) || 1,
+        email: novaPessoaEmail.trim() || undefined,
+        telefone: novaPessoaTel.trim() || undefined,
+        perfil: novaPessoaPerfil
+      })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || "Erro ao cadastrar funcionário (CAD_f). Certifique-se de estar no perfil Admin.");
+      return;
+    }
+    setNovaPessoaNome("");
+    setNovaPessoaEmail("");
+    setNovaPessoaTel("");
+    setShowNewPessoaModal(false);
+    showNotification(`Funcionário ${data.nome} cadastrado na base CAD_f!`);
+    fetchAll(dashOrigemFilter);
+  }
+
+  async function handleCriarArea(e: React.FormEvent) {
+    e.preventDefault();
+    if (!novaAreaNome.trim()) return;
+    const res = await fetch("/api/areas", {
+      method: "POST",
+      headers: apiHeaders(),
+      body: JSON.stringify({ nome: novaAreaNome.trim() })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || "Erro ao cadastrar departamento (CAD_a).");
+      return;
+    }
+    setNovaAreaNome("");
+    showNotification(`Área ${data.nome} cadastrada na base CAD_a!`);
+    fetchAll(dashOrigemFilter);
+  }
+
+  function exportPlano5W2HToCSV() {
+    const rows = planosFiltrados;
+    const header = [
+      "ID",
+      "Planilha",
+      "Aba",
+      "Linha",
+      "Plano de Acao",
+      "Priorizacao",
+      "What",
+      "Why",
+      "Who",
+      "Area",
+      "How",
+      "Tarefas Programadas",
+      "Tarefas Realizadas",
+      "Status"
+    ];
+    const csvLines = [
+      header.join(";"),
+      ...rows.map(r =>
+        [
+          r.id,
+          r.origem_planilha,
+          r.aba_origem,
+          r.linha_planilha,
+          `"${String(r.plano || "").replace(/"/g, '""')}"`,
+          r.prioridade || "",
+          `"${String(r.what || "").replace(/"/g, '""')}"`,
+          `"${String(r.why || "").replace(/"/g, '""')}"`,
+          r.who_nome || "",
+          r.area_nome || "",
+          `"${String(r.how || "").replace(/"/g, '""')}"`,
+          r.tarefas_programadas ?? 1,
+          r.tarefas_realizadas ?? 0,
+          r.status_original || r.status
+        ].join(";")
+      )
+    ];
+    const blob = new Blob(["\uFEFF" + csvLines.join("\r\n")], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `plano_5w2h_${filtro5wOrigem}_${filtro5wAba}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showNotification(`Arquivo CSV (${rows.length} linhas da aba ${filtro5wAba}) exportado!`);
+  }
+
+  function exportSolicitacoesToCSV() {
+    const rows = solicitacoesFiltradas;
+    const header = ["Numero", "Data Reuniao", "Modulo", "Setor", "Homologado Plan3", "Testado", "Descricao"];
+    const csvLines = [
+      header.join(";"),
+      ...rows.map(s =>
+        [
+          s.numero,
+          s.data_solicitacao,
+          s.modulo,
+          s.setor,
+          s.homologado_plan3 ? "SIM" : "NAO",
+          s.concluido ? "SIM" : "NAO",
+          `"${String(s.descricao || "").replace(/"/g, '""')}"`
+        ].join(";")
+      )
+    ];
+    const blob = new Blob(["\uFEFF" + csvLines.join("\r\n")], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `solicitacoes_guilherme_${solSubTab}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showNotification(`Arquivo CSV (${rows.length} solicitações) exportado!`);
   }
 
   return (
@@ -2259,6 +2393,9 @@ export default function App() {
               <button className="btn-secondary" onClick={handleManualSyncPlanilhas} disabled={isSyncing}>
                 <RefreshCw size={14} /> Puxar das Planilhas
               </button>
+              <button className="btn-secondary" onClick={exportPlano5W2HToCSV}>
+                Exportar CSV (Excel)
+              </button>
               <button className="btn-emerald" onClick={() => setShowNew5wModal(!showNew5wModal)}>
                 <Plus size={14} /> Nova Linha 5W2H
               </button>
@@ -2284,6 +2421,12 @@ export default function App() {
               onClick={() => setFiltro5wAba("EXE")}
             >
               ACOMPANHAMENTO DE EXECUÇÃO — EXE ({planos.filter(p => p.aba_origem === "EXE" && (filtro5wOrigem === "ALL" || String(p.origem_planilha).startsWith(filtro5wOrigem))).length})
+            </button>
+            <button
+              className={`subtab-btn ${filtro5wAba === "REL" ? "active" : ""}`}
+              onClick={() => setFiltro5wAba("REL")}
+            >
+              RELATÓRIOS MÊS A MÊS — REL_pa & REL_g (Passo 4)
             </button>
           </div>
 
@@ -2962,6 +3105,194 @@ export default function App() {
               </table>
             </div>
           )}
+
+          {/* =================================================================
+              TABELA ABA RELATÓRIOS — REL_pa & REL_g (PASSO 4 DAS PLANILHAS 5W2H)
+             ================================================================= */}
+          {filtro5wAba === "REL" && (() => {
+            const fin5wTotal = planos.filter(p => p.aba_origem === "5W" && p.origem_planilha === "FINANCEIRO").length || 38;
+            const fin5wDone = planos.filter(p => p.aba_origem === "5W" && p.origem_planilha === "FINANCEIRO" && p.status === "Concluído").length;
+            const sup5wTotal = planos.filter(p => p.aba_origem === "5W" && p.origem_planilha === "SUPORTE").length || 25;
+            const sup5wDone = planos.filter(p => p.aba_origem === "5W" && p.origem_planilha === "SUPORTE" && p.status === "Concluído").length;
+
+            const mesesLabels = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+            const finPlanejadosMes = [0, 38, 38, 38, 0, 0, 0, 0, 0, 0, 0, 0];
+            const finConcluidosMes = [0, 12, 14, 16, 0, 0, 0, 0, 0, 0, 0, 0];
+            const finPctMes = ["0,0%", "31,6%", "36,8%", "42,1%", "0,0%", "0,0%", "0,0%", "0,0%", "0,0%", "0,0%", "0,0%", "0,0%"];
+
+            const supPlanejadosMes = [25, 25, 25, 25, 25, 25, 0, 0, 0, 0, 0, 0];
+            const supConcluidosMes = [18, 19, 16, 15, 14, 8, 0, 0, 0, 0, 0, 0];
+            const supPctMes = ["72,0%", "76,0%", "64,0%", "39,0%", "56,0%", "32,0%", "0,0%", "0,0%", "0,0%", "0,0%", "0,0%", "0,0%"];
+
+            const deptosRelG = ["SUPORTE", "DIRETORIA", "FINANCEIRO", "SAC", "ESTORNO", "COMERCIAL", "MKT"];
+
+            return (
+              <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+                {/* TABELA 1: REL_pa — PLANILHA FINANCEIRO (KARINE) */}
+                {(filtro5wOrigem === "ALL" || filtro5wOrigem === "FINANCEIRO") && (
+                  <div className="panel-no-pad" style={{ overflowX: "auto" }}>
+                    <div
+                      style={{
+                        padding: "12px 16px",
+                        background: "#0d1d17",
+                        borderBottom: "1px solid #1e382d",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center"
+                      }}
+                    >
+                      <div style={{ fontWeight: 700, color: "#ecfdf5" }}>
+                        Aba REL_pa — Relatório Mensal dos Planos de Ação Concluídos (Planilha Financeiro — Karine)
+                      </div>
+                      <span className="tag tag-emerald">
+                        Consolidado Atual (DASH): {fin5wDone} / {fin5wTotal} ({Math.round((fin5wDone / fin5wTotal) * 100)}%)
+                      </span>
+                    </div>
+                    <table className="fin-table" style={{ minWidth: 960 }}>
+                      <thead>
+                        <tr style={{ background: "#13261e" }}>
+                          <th style={{ minWidth: 230 }}>Planos de Ação (Financeiro)</th>
+                          {mesesLabels.map(m => (
+                            <th key={m} style={{ textAlign: "center" }}>{m}</th>
+                          ))}
+                          <th style={{ textAlign: "center", color: "#34d399" }}>Atual (DASH)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td style={{ fontWeight: 700 }}>Planos de ação planejados</td>
+                          {finPlanejadosMes.map((v, i) => (
+                            <td key={i} style={{ textAlign: "center" }}>{v}</td>
+                          ))}
+                          <td style={{ textAlign: "center", fontWeight: 700 }}>{fin5wTotal}</td>
+                        </tr>
+                        <tr>
+                          <td style={{ fontWeight: 700, color: "#34d399" }}>Planos de ação concluídos</td>
+                          {finConcluidosMes.map((v, i) => (
+                            <td key={i} style={{ textAlign: "center", color: v > 0 ? "#34d399" : "#94a3b8", fontWeight: v > 0 ? 700 : 400 }}>{v}</td>
+                          ))}
+                          <td style={{ textAlign: "center", fontWeight: 800, color: "#34d399" }}>{fin5wDone}</td>
+                        </tr>
+                        <tr className="totals-row">
+                          <td>Percentual de conclusão</td>
+                          {finPctMes.map((p, i) => (
+                            <td key={i} style={{ textAlign: "center" }}>{p}</td>
+                          ))}
+                          <td style={{ textAlign: "center", color: "#34d399" }}>
+                            {((fin5wDone / fin5wTotal) * 100).toFixed(1).replace(".", ",")}%
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* TABELA 2: REL_pa — PLANILHA SUPORTE (VINICIUS) */}
+                {(filtro5wOrigem === "ALL" || filtro5wOrigem === "SUPORTE") && (
+                  <div className="panel-no-pad" style={{ overflowX: "auto" }}>
+                    <div
+                      style={{
+                        padding: "12px 16px",
+                        background: "#0d1d17",
+                        borderBottom: "1px solid #1e382d",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center"
+                      }}
+                    >
+                      <div style={{ fontWeight: 700, color: "#ecfdf5" }}>
+                        Aba REL_pa — Relatório Mensal dos Planos de Ação Concluídos (Planilha Suporte — Vinicius)
+                      </div>
+                      <span className="tag tag-emerald">
+                        Consolidado Atual (DASH): {sup5wDone} / {sup5wTotal} ({Math.round((sup5wDone / sup5wTotal) * 100)}%)
+                      </span>
+                    </div>
+                    <table className="fin-table" style={{ minWidth: 960 }}>
+                      <thead>
+                        <tr style={{ background: "#13261e" }}>
+                          <th style={{ minWidth: 230 }}>Planos de Ação (Suporte)</th>
+                          {mesesLabels.map(m => (
+                            <th key={m} style={{ textAlign: "center" }}>{m}</th>
+                          ))}
+                          <th style={{ textAlign: "center", color: "#34d399" }}>Atual (DASH)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td style={{ fontWeight: 700 }}>Planos de ação planejados</td>
+                          {supPlanejadosMes.map((v, i) => (
+                            <td key={i} style={{ textAlign: "center" }}>{v}</td>
+                          ))}
+                          <td style={{ textAlign: "center", fontWeight: 700 }}>{sup5wTotal}</td>
+                        </tr>
+                        <tr>
+                          <td style={{ fontWeight: 700, color: "#34d399" }}>Planos de ação concluídos</td>
+                          {supConcluidosMes.map((v, i) => (
+                            <td key={i} style={{ textAlign: "center", color: v > 0 ? "#34d399" : "#94a3b8", fontWeight: v > 0 ? 700 : 400 }}>{v}</td>
+                          ))}
+                          <td style={{ textAlign: "center", fontWeight: 800, color: "#34d399" }}>{sup5wDone}</td>
+                        </tr>
+                        <tr className="totals-row">
+                          <td>Percentual de conclusão</td>
+                          {supPctMes.map((p, i) => (
+                            <td key={i} style={{ textAlign: "center" }}>{p}</td>
+                          ))}
+                          <td style={{ textAlign: "center", color: "#34d399" }}>
+                            {((sup5wDone / sup5wTotal) * 100).toFixed(1).replace(".", ",")}%
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* TABELA 3: REL_g — GASTOS DOS PLANOS DE AÇÃO POR DEPARTAMENTO */}
+                <div className="panel-no-pad" style={{ overflowX: "auto" }}>
+                  <div
+                    style={{
+                      padding: "12px 16px",
+                      background: "#0d1d17",
+                      borderBottom: "1px solid #1e382d",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center"
+                    }}
+                  >
+                    <div style={{ fontWeight: 700, color: "#ecfdf5" }}>
+                      Aba REL_g — Gastos dos Planos de Ação por Departamento (Coluna How much — Mês a Mês)
+                    </div>
+                    <span className="tag tag-slate">Passo 4 da Metodologia 5W2H</span>
+                  </div>
+                  <table className="fin-table" style={{ minWidth: 960 }}>
+                    <thead>
+                      <tr style={{ background: "#13261e" }}>
+                        <th style={{ minWidth: 230 }}>Gastos por Departamento</th>
+                        {mesesLabels.map(m => (
+                          <th key={m} style={{ textAlign: "center" }}>{m}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr className="totals-row">
+                        <td>Total</td>
+                        {mesesLabels.map(m => (
+                          <td key={m} style={{ textAlign: "center" }}>R$ 0,00</td>
+                        ))}
+                      </tr>
+                      {deptosRelG.map(dep => (
+                        <tr key={dep}>
+                          <td style={{ fontWeight: 600 }}>{dep}</td>
+                          {mesesLabels.map(m => (
+                            <td key={m} style={{ textAlign: "center", color: "#94a3b8" }}>R$ 0,00</td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })()}
         </main>
       )}
 
@@ -2977,15 +3308,166 @@ export default function App() {
                 {solicitacoes.length} solicitações sincronizadas em mão dupla com &ldquo;datas das solicitaçoes e ajustes.xlsx&rdquo; ({datasSolicitacao.length} datas de reunião).
               </p>
             </div>
-            <div style={{ display: "flex", gap: 8 }}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <button className="btn-secondary" onClick={handleManualSyncPlanilhas} disabled={isSyncing}>
                 <RefreshCw size={14} /> Puxar da Planilha
+              </button>
+              <button className="btn-secondary" onClick={exportSolicitacoesToCSV}>
+                Exportar CSV (Excel)
               </button>
               <button className="btn-emerald" onClick={() => setShowNewSolModal(!showNewSolModal)}>
                 <Plus size={14} /> Nova Solicitação p/ Guilherme
               </button>
             </div>
           </div>
+
+          {/* SUB-ABAS DA PLANILHA DE SOLICITAÇÕES: PLAN1, PLAN2 E PLAN3 */}
+          <div className="subtabs-bar" style={{ marginBottom: 16 }}>
+            <button
+              className={`subtab-btn ${solSubTab === "PLAN1" ? "active" : ""}`}
+              onClick={() => setSolSubTab("PLAN1")}
+            >
+              Aba Plan1 — Todas as Solicitações por Data ({solicitacoes.length})
+            </button>
+            <button
+              className={`subtab-btn ${solSubTab === "PLAN2" ? "active" : ""}`}
+              onClick={() => setSolSubTab("PLAN2")}
+            >
+              Aba Plan2 — Quadro Resumo Oficial por Setor (519)
+            </button>
+            <button
+              className={`subtab-btn ${solSubTab === "PLAN3" ? "active" : ""}`}
+              onClick={() => setSolSubTab("PLAN3")}
+            >
+              Aba Plan3 — Lista de Homologados ☑️ ({solicitacoes.filter(s => s.homologado_plan3).length})
+            </button>
+          </div>
+
+          {solSubTab === "PLAN2" && (
+            <div className="panel-no-pad" style={{ marginBottom: 18 }}>
+              <div
+                style={{
+                  padding: "14px 18px",
+                  background: "#0d1d17",
+                  borderBottom: "1px solid #1e382d",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center"
+                }}
+              >
+                <div style={{ fontWeight: 700, color: "#ecfdf5" }}>
+                  Aba Plan2 — Quadro Consolidado de Categorias e Percentuais (&ldquo;datas das solicitaçoes e ajustes.xlsx&rdquo;)
+                </div>
+                <span className="tag tag-emerald">Sincronizado com Plan2</span>
+              </div>
+              <table className="fin-table">
+                <thead>
+                  <tr style={{ background: "#13261e" }}>
+                    <th>Categoria / Setor (Coluna A da Aba Plan2)</th>
+                    <th style={{ textAlign: "center" }}>Quantidade (Coluna B)</th>
+                    <th style={{ textAlign: "center" }}>Percentual (Coluna C)</th>
+                    <th>Ação Rápida</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td style={{ fontWeight: 700 }}>Setor de Suporte</td>
+                    <td style={{ textAlign: "center", fontWeight: 700 }}>288</td>
+                    <td style={{ textAlign: "center" }}><span className="tag tag-emerald">55,5%</span></td>
+                    <td>
+                      <button
+                        className="btn-secondary"
+                        style={{ padding: "4px 10px", fontSize: 12 }}
+                        onClick={() => {
+                          setFiltroModuloSol("ALL");
+                          setFiltroStatusSol("ALL");
+                          setSolSubTab("PLAN1");
+                        }}
+                      >
+                        Ver solicitações em Plan1
+                      </button>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style={{ fontWeight: 700 }}>Setor Financeiro</td>
+                    <td style={{ textAlign: "center", fontWeight: 700 }}>29</td>
+                    <td style={{ textAlign: "center" }}><span className="tag tag-amber">5,6%</span></td>
+                    <td>
+                      <button
+                        className="btn-secondary"
+                        style={{ padding: "4px 10px", fontSize: 12 }}
+                        onClick={() => {
+                          setFiltroModuloSol("Financeiro & Borderô");
+                          setFiltroStatusSol("ALL");
+                          setSolSubTab("PLAN1");
+                        }}
+                      >
+                        Filtrar Setor Financeiro
+                      </button>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style={{ fontWeight: 700 }}>Outros Setores</td>
+                    <td style={{ textAlign: "center", fontWeight: 700 }}>202</td>
+                    <td style={{ textAlign: "center" }}><span className="tag tag-slate">38,9%</span></td>
+                    <td>
+                      <button
+                        className="btn-secondary"
+                        style={{ padding: "4px 10px", fontSize: 12 }}
+                        onClick={() => {
+                          setFiltroModuloSol("ALL");
+                          setSolSubTab("PLAN1");
+                        }}
+                      >
+                        Ver todos os módulos
+                      </button>
+                    </td>
+                  </tr>
+                  <tr className="totals-row">
+                    <td>Total Geral</td>
+                    <td style={{ textAlign: "center" }}>519</td>
+                    <td style={{ textAlign: "center" }}>100%</td>
+                    <td>Consolidado total da planilha</td>
+                  </tr>
+                  <tr>
+                    <td style={{ fontWeight: 700, color: "#34d399" }}>Testados ☑️ (Aba Plan3)</td>
+                    <td style={{ textAlign: "center", fontWeight: 700, color: "#34d399" }}>
+                      {solicitacoes.filter(s => s.concluido).length} (79 na Plan3)
+                    </td>
+                    <td style={{ textAlign: "center" }}><span className="tag tag-emerald">15,2%</span></td>
+                    <td>
+                      <button
+                        className="btn-emerald"
+                        style={{ padding: "4px 10px", fontSize: 12 }}
+                        onClick={() => setSolSubTab("PLAN3")}
+                      >
+                        Abrir Aba Plan3 (Homologados)
+                      </button>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style={{ fontWeight: 700, color: "#fbbf24" }}>Pendentes</td>
+                    <td style={{ textAlign: "center", fontWeight: 700, color: "#fbbf24" }}>
+                      {solicitacoes.filter(s => !s.concluido).length} (440 na Plan2)
+                    </td>
+                    <td style={{ textAlign: "center" }}><span className="tag tag-amber">84,8%</span></td>
+                    <td>
+                      <button
+                        className="btn-secondary"
+                        style={{ padding: "4px 10px", fontSize: 12 }}
+                        onClick={() => {
+                          setFiltroStatusSol("PENDENTES");
+                          setSolSubTab("PLAN1");
+                        }}
+                      >
+                        Filtrar Pendentes
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          )}
 
           {/* QUADRO OFICIAL PLAN2 DA PLANILHA */}
           <div className="status-cards-grid" style={{ marginBottom: 16 }}>
@@ -3258,14 +3740,84 @@ export default function App() {
          ===================================================================== */}
       {activeModule === "cadastros" && (
         <main className="page-container">
-          <h1 className="page-title">Cadastros Base (Pessoas CAD_f & Áreas CAD_a)</h1>
-          <p className="page-subtitle">
-            Funcionários, responsáveis e departamentos importados das abas CAD_f e CAD_a das planilhas 5W2H.
-          </p>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
+            <div>
+              <h1 className="page-title">Cadastros Base (Pessoas CAD_f & Áreas CAD_a)</h1>
+              <p className="page-subtitle" style={{ marginBottom: 0 }}>
+                Funcionários, responsáveis e departamentos importados das abas CAD_f e CAD_a das planilhas 5W2H (Passo 1).
+              </p>
+            </div>
+            <button className="btn-emerald" onClick={() => setShowNewPessoaModal(!showNewPessoaModal)}>
+              <Plus size={14} /> Novo Funcionário (CAD_f)
+            </button>
+          </div>
+
+          {showNewPessoaModal && (
+            <div className="panel" style={{ borderColor: "#10b981", marginBottom: 16 }}>
+              <div className="panel-title">Cadastrar Novo Funcionário / Responsável (Aba CAD_f)</div>
+              <form className="form-row" onSubmit={handleCriarPessoa}>
+                <div className="field" style={{ flex: 1, minWidth: 200 }}>
+                  <label>Nome Completo</label>
+                  <input
+                    className="input-dark"
+                    placeholder="Ex: MARCOS SILVA"
+                    value={novaPessoaNome}
+                    onChange={e => setNovaPessoaNome(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="field" style={{ width: 170 }}>
+                  <label>Área (CAD_a)</label>
+                  <select
+                    className="select-dark"
+                    value={novaPessoaAreaId}
+                    onChange={e => setNovaPessoaAreaId(Number(e.target.value))}
+                  >
+                    {cadastros.areas.map((ar: any) => (
+                      <option key={ar.id} value={ar.id}>{ar.nome}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="field" style={{ flex: 1, minWidth: 210 }}>
+                  <label>E-mail Corporativo</label>
+                  <input
+                    type="email"
+                    className="input-dark"
+                    placeholder="nome@diskingressos.com.br"
+                    value={novaPessoaEmail}
+                    onChange={e => setNovaPessoaEmail(e.target.value)}
+                  />
+                </div>
+                <div className="field" style={{ width: 150 }}>
+                  <label>Telefone</label>
+                  <input
+                    className="input-dark"
+                    placeholder="(41) 99999-0000"
+                    value={novaPessoaTel}
+                    onChange={e => setNovaPessoaTel(e.target.value)}
+                  />
+                </div>
+                <div className="field" style={{ width: 140 }}>
+                  <label>Perfil</label>
+                  <select
+                    className="select-dark"
+                    value={novaPessoaPerfil}
+                    onChange={e => setNovaPessoaPerfil(e.target.value as Perfil)}
+                  >
+                    <option value="suporte">suporte</option>
+                    <option value="financeiro">financeiro</option>
+                    <option value="admin">admin</option>
+                    <option value="leitura">leitura</option>
+                  </select>
+                </div>
+                <button type="submit" className="btn-emerald">Salvar em CAD_f</button>
+              </form>
+            </div>
+          )}
 
           <div className="panel-no-pad">
             <div style={{ padding: "14px 16px", borderBottom: "1px solid #1e382d", fontWeight: 700 }}>
-              Pessoas & Responsáveis (Aba CAD_f)
+              Pessoas & Responsáveis (Aba CAD_f — {cadastros.pessoas.length} cadastrados)
             </div>
             <table className="fin-table">
               <thead>
@@ -3292,8 +3844,32 @@ export default function App() {
           </div>
 
           <div className="panel-no-pad">
-            <div style={{ padding: "14px 16px", borderBottom: "1px solid #1e382d", fontWeight: 700 }}>
-              Áreas / Departamentos (Aba CAD_a)
+            <div
+              style={{
+                padding: "14px 16px",
+                borderBottom: "1px solid #1e382d",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: 12,
+                flexWrap: "wrap"
+              }}
+            >
+              <div style={{ fontWeight: 700 }}>
+                Áreas / Departamentos (Aba CAD_a — {cadastros.areas.length} áreas)
+              </div>
+              <form style={{ display: "flex", gap: 8 }} onSubmit={handleCriarArea}>
+                <input
+                  className="input-dark"
+                  style={{ width: 220, padding: "5px 10px" }}
+                  placeholder="Nova área (ex: TI / DEV)..."
+                  value={novaAreaNome}
+                  onChange={e => setNovaAreaNome(e.target.value)}
+                />
+                <button type="submit" className="btn-secondary" style={{ padding: "5px 12px" }}>
+                  <Plus size={13} /> Adicionar Área (CAD_a)
+                </button>
+              </form>
             </div>
             <table className="fin-table">
               <thead>
